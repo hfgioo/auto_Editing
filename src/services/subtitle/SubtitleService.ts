@@ -38,12 +38,9 @@ export class SubtitleService {
   }
 
   /**
-   * 解析 SRT 文件
+   * 解析 SRT 内容
    */
-  async parseSRT(filePath: string): Promise<Subtitle[]> {
-    const fs = require('fs').promises;
-    const content = await fs.readFile(filePath, 'utf-8');
-    
+  parseSRT(content: string): Subtitle[] {
     const subtitles: Subtitle[] = [];
     const blocks = content.trim().split('\n\n');
 
@@ -62,6 +59,15 @@ export class SubtitleService {
     }
 
     return subtitles;
+  }
+
+  /**
+   * 从文件读取并解析 SRT
+   */
+  async parseSRTFile(filePath: string): Promise<Subtitle[]> {
+    const fs = require('fs').promises;
+    const content = await fs.readFile(filePath, 'utf-8');
+    return this.parseSRT(content);
   }
 
   /**

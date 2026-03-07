@@ -391,7 +391,7 @@ describe('VideoProcessor Integration Tests', () => {
       expect(progressCallback.mock.calls.length).toBeGreaterThan(1);
       
       // Progress should increase
-      const progressValues = progressCallback.mock.calls.map(call => call[0]);
+      const progressValues = progressCallback.mock.calls.map(call => call[0].progress);
       expect(progressValues[0]).toBeLessThan(progressValues[progressValues.length - 1]);
     });
 

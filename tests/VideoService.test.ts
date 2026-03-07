@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VideoService } from '../../src/services/video/VideoService';
-import * as ffmpeg from 'fluent-ffmpeg';
+import { VideoService } from '../src/services/video/VideoService';
+import ffmpeg from 'fluent-ffmpeg';
 
 // Mock fluent-ffmpeg
 vi.mock('fluent-ffmpeg');
@@ -280,6 +280,7 @@ describe('VideoService', () => {
       });
       
       await expect(service.addBackgroundMusic(videoPath, musicPath, outputPath)).rejects.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     it('should handle missing music file', async () => {
@@ -305,6 +306,7 @@ describe('VideoService', () => {
       });
       
       await expect(service.addBackgroundMusic(videoPath, musicPath, outputPath)).rejects.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     it('should use audio codec for music', async () => {
@@ -389,7 +391,7 @@ describe('VideoService', () => {
       });
       
       // Mock ffprobe
-      (ffmpeg as any).ffprobe = vi.fn((path, callback) => {
+      (ffmpeg as any).ffprobe = vi.fn((path: string, callback: Function) => {
         callback(null, mockMetadata);
       });
       
@@ -402,7 +404,7 @@ describe('VideoService', () => {
     it('should handle missing video file', async () => {
       const videoPath = '/nonexistent/video.mp4';
       
-      (ffmpeg as any).ffprobe = vi.fn((path, callback) => {
+      (ffmpeg as any).ffprobe = vi.fn((path: string, callback: Function) => {
         callback(new Error('File not found'), null);
       });
       
@@ -412,7 +414,7 @@ describe('VideoService', () => {
     it('should handle corrupted video file', async () => {
       const videoPath = '/test/corrupted.mp4';
       
-      (ffmpeg as any).ffprobe = vi.fn((path, callback) => {
+      (ffmpeg as any).ffprobe = vi.fn((path: string, callback: Function) => {
         callback(new Error('Invalid data'), null);
       });
       

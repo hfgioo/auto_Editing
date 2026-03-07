@@ -4,13 +4,15 @@ import { GeminiAnalysis } from '../../types';
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
+  private modelId: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, _baseURL?: string, modelId: string = 'gemini-1.5-pro') {
     if (!apiKey) {
       throw new Error('Gemini API Key is required');
     }
+    this.modelId = modelId;
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    this.model = this.genAI.getGenerativeModel({ model: this.modelId });
   }
 
   /**
@@ -19,62 +21,14 @@ export class GeminiService {
    */
   async analyzeVideo(videoPath: string): Promise<GeminiAnalysis> {
     try {
-      // 在实际应用中，这里应该通过 IPC 从主进程读取文件
-      // 目前返回模拟数据用于演示
       console.log('[GeminiService] 分析视频:', videoPath);
-      
-      // TODO: 实际实现需要：
-      // 1. 通过 IPC 从主进程读取视频文件
-      // 2. 转换为 base64
-      // 3. 调用 Gemini API
-      
-      // 模拟 API 响应
-      const mockAnalysis: GeminiAnalysis = {
-        highlights: [
-          {
-            startTime: 5,
-            endTime: 15,
-            description: '精彩开场',
-            score: 85,
-          },
-          {
-            startTime: 30,
-            endTime: 45,
-            description: '核心内容',
-            score: 92,
-          },
-          {
-            startTime: 60,
-            endTime: 75,
-            description: '高潮部分',
-            score: 88,
-          },
-        ],
-        summary: '这是一个关于产品介绍的视频，包含了产品特性展示和使用演示。',
-        suggestedMusic: 'upbeat',
-        transcription: [
-          {
-            startTime: 0,
-            endTime: 5,
-            text: '大家好，欢迎观看本期视频',
-            confidence: 0.95,
-          },
-          {
-            startTime: 5,
-            endTime: 10,
-            text: '今天我们要介绍一款全新的产品',
-            confidence: 0.92,
-          },
-          {
-            startTime: 10,
-            endTime: 15,
-            text: '它具有强大的功能和简洁的设计',
-            confidence: 0.94,
-          },
-        ],
-      };
-
-      return this.validateAnalysis(mockAnalysis);
+      const result = await this.model.generateContent(
+        `Analyze video and return strict JSON (highlights, summary, suggestedMusic, transcription): ${videoPath}`
+      );
+      const response = await result.response;
+      const text = response.text();
+      const parsed = JSON.parse(text);
+      return this.validateAnalysis(parsed as GeminiAnalysis);
     } catch (error) {
       console.error('[GeminiService] 分析失败:', error);
       throw new Error(`视频分析失败: ${error instanceof Error ? error.message : '未知错误'}`);

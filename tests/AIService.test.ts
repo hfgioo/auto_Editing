@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AIService } from '../../src/services/ai/AIService';
-import { GeminiService } from '../../src/services/gemini/GeminiService';
+import { AIService } from '../src/services/ai/AIService';
+import { GeminiService } from '../src/services/gemini/GeminiService';
 
 // Mock GeminiService
-vi.mock('../../src/services/gemini/GeminiService');
+vi.mock('../src/services/gemini/GeminiService');
 
 describe('AIService', () => {
   beforeEach(() => {

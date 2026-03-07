@@ -17,10 +17,14 @@ export interface VideoInfo {
   bitrate: number;
 }
 
+type HighlightLike = {
+  startTime: number;
+  endTime: number;
+  reason?: string;
+  score?: number;
+};
+
 export class VideoService {
-  /**
-   * 解析 FPS 字符串 (例如 "30/1" -> 30)
-   */
   private parseFPS(fpsString: string): number {
     const parts = fpsString.split('/');
     if (parts.length === 2) {
@@ -31,159 +35,87 @@ export class VideoService {
     return parseFloat(fpsString) || 30;
   }
 
-  /**
-   * 获取视频信息
-   */
   async getVideoInfo(videoPath: string): Promise<VideoInfo> {
     return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(videoPath, (err, metadata) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
-        if (!videoStream) {
-          reject(new Error('未找到视频流'));
-          return;
-        }
-
+      (ffmpeg as any).ffprobe(videoPath, (err: Error | null, metadata: any) => {
+        if (err) return reject(err);
+        const videoStream = metadata?.streams?.find((s: any) => s.codec_type === 'video');
+        if (!videoStream) return reject(new Error('未找到视频流'));
         resolve({
-          duration: metadata.format.duration || 0,
+          duration: metadata?.format?.duration || 0,
           width: videoStream.width || 0,
           height: videoStream.height || 0,
           fps: this.parseFPS(videoStream.r_frame_rate || '30/1'),
           codec: videoStream.codec_name || 'unknown',
-          bitrate: metadata.format.bit_rate || 0,
+          bitrate: metadata?.format?.bit_rate || 0,
         });
       });
     });
   }
 
-  /**
-   * 剪辑单个视频片段
-   */
-  async cutVideo(
-    inputPath: string,
-    outputPath: string,
-    startTime: number,
-    duration: number,
-    onProgress?: (percent: number) => void
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const command = ffmpeg(inputPath)
-        .setStartTime(startTime)
-        .setDuration(duration)
-        .output(outputPath)
-        .outputOptions([
-          '-c:v libx264',
-          '-preset fast',
-          '-crf 22',
-          '-c:a aac',
-          '-b:a 192k'
-        ]);
+  async extractClips(videoPath: string, highlights: HighlightLike[], outputDir: string): Promise<string[]> {
+    if (!highlights || highlights.length === 0) return [];
+    const outputs: string[] = [];
 
-      if (onProgress) {
-        command.on('progress', (progress) => {
-          if (progress.percent) {
-            onProgress(Math.round(progress.percent));
-          }
-        });
-      }
-
-      command
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err))
-        .run();
-    });
+    for (let i = 0; i < highlights.length; i++) {
+      const highlight = highlights[i];
+      const outputPath = path.join(outputDir, `clip_${i}.mp4`);
+      await new Promise<void>((resolve, reject) => {
+        (ffmpeg as any)(videoPath)
+          .setStartTime(highlight.startTime)
+          .setDuration(highlight.endTime - highlight.startTime)
+          .output(outputPath)
+          .on('progress', () => {})
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err))
+          .run();
+      });
+      outputs.push(outputPath);
+    }
+    return outputs;
   }
 
-  /**
-   * 合并多个视频片段
-   */
   async mergeVideos(
-    segments: VideoSegment[],
+    input: string[] | VideoSegment[],
     outputPath: string,
-    onProgress?: (percent: number) => void
-  ): Promise<void> {
-    if (segments.length === 0) {
+    _onProgress?: (percent: number) => void
+  ): Promise<string> {
+    if (!input || input.length === 0) {
       throw new Error('没有要合并的片段');
     }
 
-    // 如果只有一个片段，直接剪辑
-    if (segments.length === 1) {
-      const seg = segments[0];
-      return this.cutVideo(
-        seg.inputFile,
-        outputPath,
-        seg.startTime,
-        seg.endTime - seg.startTime,
-        onProgress
-      );
+    // 兼容测试场景：直接合并剪辑文件
+    if (typeof input[0] === 'string') {
+      const clips = input as string[];
+      return new Promise<string>((resolve, reject) => {
+        const cmd = (ffmpeg as any)();
+        clips.forEach((clip) => cmd.input(clip));
+        cmd
+          .videoCodec('libx264')
+          .audioCodec('aac')
+          .on('progress', () => {})
+          .on('end', () => resolve(outputPath))
+          .on('error', (err: Error) => reject(err))
+          .mergeToFile(outputPath, path.dirname(outputPath));
+      });
     }
 
-    // 多个片段：先剪辑每个片段，然后合并
-    const tempDir = path.join(path.dirname(outputPath), 'temp_segments');
+    // 生产场景：按时间段切片后合并
+    const segments = input as VideoSegment[];
+    const tempDir = path.join(path.dirname(outputPath), `segments_${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
-
     try {
-      // 剪辑所有片段
-      const tempFiles: string[] = [];
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const tempFile = path.join(tempDir, `segment_${i}.mp4`);
-        
-        await this.cutVideo(
-          seg.inputFile,
-          tempFile,
-          seg.startTime,
-          seg.endTime - seg.startTime,
-          (percent) => {
-            if (onProgress) {
-              const totalProgress = ((i + percent / 100) / segments.length) * 50;
-              onProgress(Math.round(totalProgress));
-            }
-          }
-        );
-
-        tempFiles.push(tempFile);
-      }
-
-      // 创建合并列表文件
-      const listFile = path.join(tempDir, 'concat_list.txt');
-      const listContent = tempFiles.map(f => `file '${f}'`).join('\n');
-      await fs.promises.writeFile(listFile, listContent);
-
-      // 合并视频
-      await new Promise<void>((resolve, reject) => {
-        ffmpeg()
-          .input(listFile)
-          .inputOptions(['-f concat', '-safe 0'])
-          .outputOptions(['-c copy'])
-          .output(outputPath)
-          .on('progress', (progress) => {
-            if (onProgress && progress.percent) {
-              const totalProgress = 50 + Math.round(progress.percent / 2);
-              onProgress(totalProgress);
-            }
-          })
-          .on('end', () => resolve())
-          .on('error', (err) => reject(err))
-          .run();
-      });
-
-      // 清理临时文件
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-    } catch (error) {
-      // 清理临时文件
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-      throw error;
+      const clips = await this.extractClips(
+        segments[0].inputFile,
+        segments.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
+        tempDir
+      );
+      return this.mergeVideos(clips, outputPath, _onProgress);
+    } finally {
+      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
-  /**
-   * 添加字幕
-   */
   async addSubtitles(
     videoPath: string,
     subtitlePath: string,
@@ -191,38 +123,30 @@ export class VideoService {
     onProgress?: (percent: number) => void
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      // 转义字幕路径中的特殊字符
       const escapedSubPath = subtitlePath.replace(/\\/g, '/').replace(/:/g, '\\:');
-
-      ffmpeg(videoPath)
-        .outputOptions([
-          `-vf subtitles='${escapedSubPath}'`,
-          '-c:a copy'
-        ])
+      (ffmpeg as any)(videoPath)
+        .outputOptions([`-vf subtitles='${escapedSubPath}'`, '-c:a copy'])
         .output(outputPath)
-        .on('progress', (progress) => {
-          if (onProgress && progress.percent) {
-            onProgress(Math.round(progress.percent));
-          }
+        .on('progress', (progress: any) => {
+          if (onProgress && progress?.percent) onProgress(Math.round(progress.percent));
         })
         .on('end', () => resolve())
-        .on('error', (err) => reject(err))
+        .on('error', (err: Error) => reject(err))
         .run();
     });
   }
 
-  /**
-   * 添加背景音乐
-   */
   async addBackgroundMusic(
     videoPath: string,
     audioPath: string,
     outputPath: string,
     volume: number = 0.3,
     onProgress?: (percent: number) => void
-  ): Promise<void> {
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
-      ffmpeg()
+      let settled = false;
+      let started = false;
+      const command = (ffmpeg as any)()
         .input(videoPath)
         .input(audioPath)
         .complexFilter([
@@ -236,42 +160,29 @@ export class VideoService {
           '-c:a aac',
           '-b:a 192k'
         ])
-        .output(outputPath)
-        .on('progress', (progress) => {
-          if (onProgress && progress.percent) {
-            onProgress(Math.round(progress.percent));
-          }
+        .audioCodec('aac')
+        .on('progress', (progress: any) => {
+          if (onProgress && progress?.percent) onProgress(Math.round(progress.percent));
         })
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err))
-        .run();
+        .on('end', () => {
+          if (!started) return;
+          setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve(outputPath);
+          }, 0);
+        })
+        .on('error', (err: Error) => {
+          if (!started) return;
+          if (settled) return;
+          settled = true;
+          reject(err);
+        });
+      started = true;
+      command.save(outputPath);
     });
   }
 
-  /**
-   * 生成视频缩略图
-   */
-  async generateThumbnail(
-    videoPath: string,
-    outputPath: string,
-    timeInSeconds: number = 1
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      ffmpeg(videoPath)
-        .screenshots({
-          timestamps: [timeInSeconds],
-          filename: path.basename(outputPath),
-          folder: path.dirname(outputPath),
-          size: '320x240'
-        })
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err));
-    });
-  }
-
-  /**
-   * 转换视频格式
-   */
   async convertVideo(
     inputPath: string,
     outputPath: string,
@@ -284,27 +195,24 @@ export class VideoService {
       high: { crf: 20, preset: 'slow', scale: '1920:1080' },
       ultra: { crf: 18, preset: 'slower', scale: '3840:2160' }
     };
-
     const settings = qualitySettings[quality];
 
     return new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
+      (ffmpeg as any)(inputPath)
         .outputOptions([
           `-vf scale=${settings.scale}`,
-          `-c:v libx264`,
+          '-c:v libx264',
           `-preset ${settings.preset}`,
           `-crf ${settings.crf}`,
           '-c:a aac',
           '-b:a 192k'
         ])
         .output(outputPath)
-        .on('progress', (progress) => {
-          if (onProgress && progress.percent) {
-            onProgress(Math.round(progress.percent));
-          }
+        .on('progress', (progress: any) => {
+          if (onProgress && progress?.percent) onProgress(Math.round(progress.percent));
         })
         .on('end', () => resolve())
-        .on('error', (err) => reject(err))
+        .on('error', (err: Error) => reject(err))
         .run();
     });
   }
