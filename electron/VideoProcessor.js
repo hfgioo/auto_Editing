@@ -120,6 +120,85 @@ class VideoProcessor {
     }
   }
 
+  async processVideoBatch(videoPaths, settings, onProgress) {
+    const taskId = `${Date.now()}_batch`;
+    const task = {
+      id: taskId,
+      videoPath: videoPaths.join(' | '),
+      status: 'processing',
+      progress: 0,
+      steps: {
+        extract: { status: 'pending', progress: 0 },
+        analyze: { status: 'pending', progress: 0 },
+        edit: { status: 'pending', progress: 0 },
+        subtitle: { status: settings.autoSubtitle ? 'pending' : 'skipped', progress: settings.autoSubtitle ? 0 : 100 },
+        music: { status: settings.autoMusic ? 'pending' : 'skipped', progress: settings.autoMusic ? 0 : 100 },
+        export: { status: 'pending', progress: 0 },
+      },
+      result: null,
+      error: null,
+    };
+
+    this.processingTasks.set(taskId, task);
+
+    try {
+      await this.updateStep(taskId, 'extract', 'processing', onProgress);
+      const sourceInfos = [];
+      for (const vp of videoPaths) {
+        sourceInfos.push(await this.extractVideoInfo(vp));
+      }
+      await this.updateStep(taskId, 'extract', 'completed', onProgress);
+
+      await this.updateStep(taskId, 'analyze', 'processing', onProgress);
+      const analyses = [];
+      for (let i = 0; i < videoPaths.length; i++) {
+        analyses.push(await this.analyzeWithAI(videoPaths[i], sourceInfos[i], settings));
+      }
+      const montagePlan = this.buildSmartMontagePlan(videoPaths, analyses, sourceInfos, settings);
+      await this.updateStep(taskId, 'analyze', 'completed', onProgress);
+
+      await this.updateStep(taskId, 'edit', 'processing', onProgress);
+      const editedPath = await this.editVideoByPlan(videoPaths, sourceInfos, montagePlan, settings);
+      await this.updateStep(taskId, 'edit', 'completed', onProgress);
+
+      let subtitles = [];
+      let finalPath = editedPath;
+      if (settings.autoSubtitle) {
+        await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
+        subtitles = await this.generateSubtitles(editedPath, montagePlan, settings);
+        finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
+        await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
+      }
+
+      if (settings.autoMusic) {
+        await this.updateStep(taskId, 'music', 'processing', onProgress);
+        finalPath = await this.addMusic(finalPath, montagePlan, settings);
+        await this.updateStep(taskId, 'music', 'completed', onProgress);
+      }
+
+      await this.updateStep(taskId, 'export', 'processing', onProgress);
+      const outputPath = await this.exportVideo(finalPath, settings);
+      await this.updateStep(taskId, 'export', 'completed', onProgress);
+
+      task.status = 'completed';
+      task.progress = 100;
+      task.result = { outputPath, analysis: montagePlan, subtitles };
+      onProgress(task);
+      return task;
+    } catch (error) {
+      console.error('[VideoProcessor] 批量处理失败:', error);
+      for (const [stepName, step] of Object.entries(task.steps)) {
+        if (step.status === 'processing') {
+          await this.updateStep(taskId, stepName, 'failed', onProgress);
+        }
+      }
+      task.status = 'failed';
+      task.error = error.message;
+      onProgress(task);
+      throw error;
+    }
+  }
+
   async updateStep(taskId, stepName, status, onProgress) {
     const task = this.processingTasks.get(taskId);
     if (!task) return;
@@ -419,6 +498,258 @@ class VideoProcessor {
     } catch (_e) {
       return null;
     }
+  }
+
+  normalizeSegmentWindow(start, end, maxDuration, maxClipDuration = 12, minClipDuration = 2) {
+    const safeStart = Math.max(0, Number(start) || 0);
+    const safeEnd = Math.min(maxDuration, Number(end) || safeStart);
+    const rawDuration = Math.max(0, safeEnd - safeStart);
+
+    if (rawDuration <= maxClipDuration) {
+      return { start: safeStart, end: safeEnd, duration: rawDuration };
+    }
+
+    const mid = (safeStart + safeEnd) / 2;
+    const half = maxClipDuration / 2;
+    const clippedStart = Math.max(0, mid - half);
+    const clippedEnd = Math.min(maxDuration, mid + half);
+    const clippedDuration = Math.max(minClipDuration, clippedEnd - clippedStart);
+    return { start: clippedStart, end: clippedStart + clippedDuration, duration: clippedDuration };
+  }
+
+  detectContentMode(settings, sourceInfos, videoPaths) {
+    if (settings.contentMode && settings.contentMode !== 'auto') return settings.contentMode;
+
+    const totalDuration = sourceInfos.reduce((sum, info) => sum + (Number(info?.duration) || 0), 0);
+    const name = videoPaths.map((p) => path.basename(p).toLowerCase()).join(' ');
+
+    if (/(movie|film|电影|解说|剧情|片段)/i.test(name) || totalDuration > 1800) return 'movie_commentary';
+    if (/(教程|教学|course|lesson|review|评测)/i.test(name) || totalDuration > 900) return 'tutorial';
+    if (/(采访|podcast|访谈|talk)/i.test(name)) return 'interview';
+    if (/(游戏|game|电竞|直播)/i.test(name)) return 'gaming';
+    if (/(旅行|vlog|日常|travel)/i.test(name)) return 'vlog';
+    if (/(带货|广告|product|电商|开箱)/i.test(name)) return 'ecommerce';
+    return 'short';
+  }
+
+  getContentProfile(mode, settings) {
+    const profiles = {
+      short: { minScore: 0.62, minDuration: 1.5, maxSegments: 16, maxDuration: 75, maxClipDuration: 8, order: 'impact' },
+      vlog: { minScore: 0.56, minDuration: 2.5, maxSegments: 18, maxDuration: 120, maxClipDuration: 10, order: 'story' },
+      tutorial: { minScore: 0.5, minDuration: 4, maxSegments: 20, maxDuration: 180, maxClipDuration: 16, order: 'logical' },
+      interview: { minScore: 0.54, minDuration: 4, maxSegments: 14, maxDuration: 150, maxClipDuration: 14, order: 'speaker_balance' },
+      gaming: { minScore: 0.6, minDuration: 2, maxSegments: 20, maxDuration: 120, maxClipDuration: 9, order: 'alternating' },
+      ecommerce: { minScore: 0.58, minDuration: 1.8, maxSegments: 15, maxDuration: 90, maxClipDuration: 7, order: 'cta' },
+      movie_commentary: { minScore: 0.55, minDuration: 3, maxSegments: 22, maxDuration: 180, maxClipDuration: 12, order: 'story' },
+    };
+
+    const base = profiles[mode] || profiles.short;
+    return {
+      mode,
+      minScore: Number(settings.smartMinScore) > 0 ? Number(settings.smartMinScore) : base.minScore,
+      minDuration: Number(settings.smartMinDurationSec) > 0 ? Number(settings.smartMinDurationSec) : base.minDuration,
+      maxSegments: Number(settings.smartMaxSegments) > 0 ? Number(settings.smartMaxSegments) : base.maxSegments,
+      maxDuration: Number(settings.smartMaxDurationSec) > 0 ? Number(settings.smartMaxDurationSec) : base.maxDuration,
+      maxClipDuration: base.maxClipDuration,
+      order: base.order,
+    };
+  }
+
+  buildSmartMontagePlan(videoPaths, analyses, sourceInfos, settings) {
+    const mode = this.detectContentMode(settings, sourceInfos, videoPaths);
+    const profile = this.getContentProfile(mode, settings);
+    const candidates = [];
+
+    for (let sourceIndex = 0; sourceIndex < analyses.length; sourceIndex++) {
+      const analysis = analyses[sourceIndex] || {};
+      const highlights = Array.isArray(analysis.highlights) ? analysis.highlights : [];
+      const duration = Number(sourceInfos[sourceIndex]?.duration) || 0;
+
+      for (const h of highlights) {
+        const normalized = this.normalizeSegmentWindow(h.startTime, h.endTime, duration, profile.maxClipDuration, profile.minDuration);
+        if (normalized.duration <= 0) continue;
+        candidates.push({
+          sourceIndex,
+          start: normalized.start,
+          end: normalized.end,
+          duration: normalized.duration,
+          score: Number(h.score) || 0.5,
+          reason: h.reason || '',
+        });
+      }
+    }
+
+    const pruned = this.smartPruneSegments(candidates, profile);
+    const ordered = this.smartOrderSegments(pruned, profile);
+    const maxDuration = profile.maxDuration;
+
+    const limited = [];
+    let totalDuration = 0;
+    for (const seg of ordered) {
+      if (totalDuration + seg.duration > maxDuration) break;
+      limited.push(seg);
+      totalDuration += seg.duration;
+    }
+
+    if (limited.length === 0) {
+      const fallbackDuration = Math.min(profile.maxClipDuration, Number(sourceInfos[0]?.duration) || profile.maxClipDuration);
+      limited.push({
+        sourceIndex: 0,
+        start: 0,
+        end: fallbackDuration,
+        duration: fallbackDuration,
+        score: 0.3,
+        reason: 'fallback',
+      });
+    }
+
+    const suggestedMusic = analyses
+      .map((a) => a?.suggestedMusic)
+      .find(Boolean) || { genre: '轻快', mood: '中性', tempo: '中速' };
+
+    return {
+      mode: 'smart_montage',
+      contentMode: mode,
+      profile,
+      sourceCount: videoPaths.length,
+      segmentCount: limited.length,
+      totalDuration,
+      segments: limited,
+      suggestedMusic,
+      summary: `已自动从 ${videoPaths.length} 个视频智能筛选 ${limited.length} 个片段并完成排序`,
+    };
+  }
+
+  smartPruneSegments(candidates, profile) {
+    const minScore = profile.minScore;
+    const minDuration = profile.minDuration;
+    const maxSegments = profile.maxSegments;
+
+    const filtered = candidates
+      .filter((seg) => seg.duration >= minDuration && seg.score >= minScore)
+      .sort((a, b) => b.score - a.score);
+
+    const result = [];
+    for (const seg of filtered) {
+      if (result.length >= maxSegments) break;
+      const overlaps = result.some((picked) => {
+        if (picked.sourceIndex !== seg.sourceIndex) return false;
+        return Math.max(picked.start, seg.start) < Math.min(picked.end, seg.end);
+      });
+      if (!overlaps) result.push(seg);
+    }
+
+    if (result.length > 0) return result;
+    return candidates.sort((a, b) => b.score - a.score).slice(0, Math.min(maxSegments, Math.max(1, candidates.length)));
+  }
+
+  smartOrderSegments(segments, profile) {
+    if (profile.order === 'logical') {
+      return [...segments].sort((a, b) => (a.sourceIndex - b.sourceIndex) || (a.start - b.start));
+    }
+
+    if (profile.order === 'story') {
+      return [...segments].sort((a, b) => a.start - b.start);
+    }
+
+    const remain = [...segments].sort((a, b) => b.score - a.score);
+    const ordered = [];
+    let lastSource = -1;
+
+    while (remain.length > 0) {
+      let idx = remain.findIndex((s) => s.sourceIndex !== lastSource);
+      if (idx < 0) idx = 0;
+      const picked = remain.splice(idx, 1)[0];
+      ordered.push(picked);
+      lastSource = picked.sourceIndex;
+    }
+
+    return ordered;
+  }
+
+  async editVideoByPlan(videoPaths, sourceInfos, montagePlan, settings) {
+    const segments = Array.isArray(montagePlan?.segments) ? montagePlan.segments : [];
+    const outputDir = path.join(settings.outputPath, 'temp');
+    await fs.mkdir(outputDir, { recursive: true });
+
+    const outputPath = path.join(outputDir, `montage_${Date.now()}.mp4`);
+    if (segments.length === 0) {
+      await fs.copyFile(videoPaths[0], outputPath);
+      return outputPath;
+    }
+
+    const clipPaths = [];
+    const concatListPath = path.join(outputDir, `concat_${Date.now()}.txt`);
+    try {
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const sourcePath = videoPaths[seg.sourceIndex];
+        const hasAudio = !!sourceInfos[seg.sourceIndex]?.hasAudio;
+        const clipPath = path.join(outputDir, `segment_${Date.now()}_${i}.mp4`);
+        await this.extractSegmentClip(sourcePath, seg.start, seg.end, clipPath, settings, hasAudio);
+        clipPaths.push(clipPath);
+      }
+
+      const concatContent = clipPaths
+        .map((p) => `file '${String(p).replace(/'/g, "'\\''")}'`)
+        .join('\n');
+      await fs.writeFile(concatListPath, concatContent, 'utf8');
+
+      await execFileAsync(this.ffmpegPath, [
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatListPath,
+        '-c', 'copy',
+        outputPath,
+      ]);
+      return outputPath;
+    } catch (error) {
+      console.error('[VideoProcessor] 智能拼接失败:', error);
+      throw new Error(`智能拼接失败: ${error?.message || '未知错误'}`);
+    } finally {
+      await fs.unlink(concatListPath).catch(() => {});
+      await Promise.all(clipPaths.map((p) => fs.unlink(p).catch(() => {})));
+    }
+  }
+
+  async extractSegmentClip(sourcePath, start, end, outputPath, settings, hasAudio) {
+    const duration = Math.max(0.5, Number(end) - Number(start));
+    const preset = settings.videoQuality === 'high' ? 'slow' : 'fast';
+    const crf = settings.videoQuality === 'high' ? '18' : '23';
+
+    if (hasAudio) {
+      await execFileAsync(this.ffmpegPath, [
+        '-y',
+        '-ss', String(Math.max(0, start)),
+        '-t', String(duration),
+        '-i', sourcePath,
+        '-c:v', 'libx264',
+        '-preset', preset,
+        '-crf', crf,
+        '-c:a', 'aac',
+        '-b:a', '160k',
+        outputPath,
+      ]);
+      return;
+    }
+
+    await execFileAsync(this.ffmpegPath, [
+      '-y',
+      '-ss', String(Math.max(0, start)),
+      '-t', String(duration),
+      '-i', sourcePath,
+      '-f', 'lavfi',
+      '-t', String(duration),
+      '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+      '-shortest',
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', crf,
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      outputPath,
+    ]);
   }
 
   async editVideo(videoPath, analysis, settings) {

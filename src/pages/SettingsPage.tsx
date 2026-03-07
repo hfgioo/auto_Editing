@@ -17,6 +17,7 @@ const inputCls =
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'ai' | 'cloud' | 'general'>('ai');
   const [settings, setSettings] = useState<AppSettings>({
+    contentMode: 'auto',
     aiProvider: 'gemini',
     geminiApiKey: '',
     geminiBaseURL: 'https://generativelanguage.googleapis.com/v1beta',
@@ -33,6 +34,10 @@ const SettingsPage: React.FC = () => {
     transcriptionApiKey: '',
     transcriptionBaseURL: '',
     transcriptionModel: 'whisper-1',
+    smartMinScore: 0.58,
+    smartMinDurationSec: 2,
+    smartMaxSegments: 18,
+    smartMaxDurationSec: 90,
     outputPath: './output',
     videoQuality: 'high',
     autoSubtitle: true,
@@ -415,6 +420,75 @@ const SettingsPage: React.FC = () => {
                   <option value="high">高 (1080p, 推荐)</option>
                   <option value="ultra">超高 (4K, 最慢)</option>
                 </select>
+              </div>
+
+              <div className={cardCls}>
+                <label className={labelCls}>视频类型模式</label>
+                <select
+                  value={settings.contentMode || 'auto'}
+                  onChange={(e) => setSettings({ ...settings, contentMode: e.target.value as any })}
+                  className={inputCls}
+                >
+                  <option value="auto">自动识别（推荐）</option>
+                  <option value="short">短视频</option>
+                  <option value="vlog">Vlog/旅行</option>
+                  <option value="tutorial">教程/评测</option>
+                  <option value="interview">采访/访谈</option>
+                  <option value="gaming">游戏/直播</option>
+                  <option value="ecommerce">电商带货</option>
+                  <option value="movie_commentary">电影解说</option>
+                </select>
+              </div>
+
+              <div className={cardCls}>
+                <label className={labelCls}>智能拼接策略</label>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>最低片段评分</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={settings.smartMinScore ?? 0.58}
+                      onChange={(e) => setSettings({ ...settings, smartMinScore: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>最短片段时长(秒)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={settings.smartMinDurationSec ?? 2}
+                      onChange={(e) => setSettings({ ...settings, smartMinDurationSec: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>最多片段数</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={settings.smartMaxSegments ?? 18}
+                      onChange={(e) => setSettings({ ...settings, smartMaxSegments: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>拼接总时长上限(秒)</label>
+                    <input
+                      type="number"
+                      min="10"
+                      step="5"
+                      value={settings.smartMaxDurationSec ?? 90}
+                      onChange={(e) => setSettings({ ...settings, smartMaxDurationSec: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className={cardCls}>

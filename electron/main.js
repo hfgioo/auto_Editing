@@ -236,6 +236,37 @@ ipcMain.handle('process-video', async (event, videoPath, settings) => {
   }
 });
 
+ipcMain.handle('process-video-batch', async (event, videoPaths, settings) => {
+  try {
+    if (!Array.isArray(videoPaths) || videoPaths.length === 0) {
+      throw new Error('缺少可处理的视频列表');
+    }
+
+    console.log('[Main] 开始批量智能处理视频:', videoPaths.length);
+
+    const task = await videoProcessor.processVideoBatch(
+      videoPaths,
+      settings,
+      (updatedTask) => {
+        event.sender.send('video-progress', updatedTask);
+      }
+    );
+
+    await db.saveProcessedVideo({
+      videoPath: videoPaths.join(' | '),
+      outputPath: task.result.outputPath,
+      analysis: task.result.analysis,
+      subtitles: task.result.subtitles,
+      createdAt: new Date().toISOString(),
+    });
+
+    return task;
+  } catch (error) {
+    console.error('[Main] 批量处理视频失败:', error);
+    throw error;
+  }
+});
+
 // 获取处理任务
 ipcMain.handle('get-task', async (event, taskId) => {
   return videoProcessor.getTask(taskId);
@@ -317,6 +348,7 @@ ipcMain.handle('get-processed-videos', async () => {
 
 function getDefaultSettings() {
   return {
+    contentMode: 'auto',
     aiProvider: 'gemini',
     geminiApiKey: '',
     geminiBaseURL: 'https://generativelanguage.googleapis.com/v1beta',
@@ -333,6 +365,10 @@ function getDefaultSettings() {
     transcriptionApiKey: '',
     transcriptionBaseURL: '',
     transcriptionModelId: 'whisper-1',
+    smartMinScore: 0.58,
+    smartMinDurationSec: 2,
+    smartMaxSegments: 18,
+    smartMaxDurationSec: 90,
     outputPath: path.join(app.getPath('videos'), 'AI_Edited'),
     videoQuality: 'high',
     autoSubtitle: true,

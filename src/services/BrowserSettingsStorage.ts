@@ -21,6 +21,7 @@ export class BrowserSettingsStorage {
 
     // 返回默认设置
     return {
+      contentMode: 'auto',
       aiProvider: 'gemini',
       geminiApiKey: '',
       geminiBaseURL: 'https://generativelanguage.googleapis.com/v1beta',
@@ -36,6 +37,10 @@ export class BrowserSettingsStorage {
       analysisModelId: '',
       transcriptionApiKey: '',
       transcriptionBaseURL: '',
+      smartMinScore: 0.58,
+      smartMinDurationSec: 2,
+      smartMaxSegments: 18,
+      smartMaxDurationSec: 90,
       outputPath: './output',
       videoQuality: 'high',
       autoSubtitle: true,

@@ -28,6 +28,7 @@ export interface ProcessTask {
 }
 
 export interface AppSettings {
+  contentMode?: 'auto' | 'short' | 'vlog' | 'tutorial' | 'interview' | 'gaming' | 'ecommerce' | 'movie_commentary';
   aiProvider: 'gemini' | 'openai' | 'custom' | 'compatible';
   geminiApiKey: string;
   geminiBaseURL: string;
@@ -45,6 +46,10 @@ export interface AppSettings {
   transcriptionBaseURL?: string;
   transcriptionModel?: string;
   transcriptionModelId?: string;
+  smartMinScore?: number;
+  smartMinDurationSec?: number;
+  smartMaxSegments?: number;
+  smartMaxDurationSec?: number;
   outputPath: string;
   videoQuality: 'low' | 'medium' | 'high';
   autoSubtitle: boolean;
@@ -69,6 +74,7 @@ export interface ElectronAPI {
   selectMusicFiles: () => Promise<string[]>;
   openPath: (targetPath: string) => Promise<{ success: boolean; error?: string }>;
   processVideo: (videoPath: string, settings: AppSettings) => Promise<ProcessTask>;
+  processVideoBatch: (videoPaths: string[], settings: AppSettings) => Promise<ProcessTask>;
   getTask: (taskId: string) => Promise<ProcessTask | undefined>;
   getAllTasks: () => Promise<ProcessTask[]>;
   getProcessedVideos: () => Promise<any[]>;

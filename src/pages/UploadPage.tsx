@@ -104,12 +104,15 @@ const UploadPage: React.FC = () => {
 
       setIsProcessing(true);
 
-      for (let i = 0; i < files.length; i++) {
-        const filePath = (files[i] as any).path;
-        if (!filePath) {
-          throw new Error('无法获取文件路径，请在 Electron 环境中运行');
-        }
-        await api.processVideo(filePath, settings);
+      const filePaths = files.map((f) => (f as any).path).filter(Boolean);
+      if (filePaths.length !== files.length) {
+        throw new Error('部分文件路径不可用，请在 Electron 环境中运行');
+      }
+
+      if (filePaths.length > 1) {
+        await api.processVideoBatch(filePaths, settings);
+      } else {
+        await api.processVideo(filePaths[0], settings);
       }
 
       alert('✅ 所有视频处理完成！');

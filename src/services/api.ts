@@ -56,6 +56,13 @@ export const api = {
     return (window as any).electronAPI.processVideo(videoPath, settings);
   },
 
+  processVideoBatch: async (videoPaths: string[], settings: any) => {
+    if (!(window as any).electronAPI) {
+      throw new Error('此功能仅在 Electron 环境中可用');
+    }
+    return (window as any).electronAPI.processVideoBatch(videoPaths, settings);
+  },
+
   getTask: async (taskId: string) => {
     if (!(window as any).electronAPI) {
       throw new Error('此功能仅在 Electron 环境中可用');

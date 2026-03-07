@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 视频处理
   processVideo: (videoPath, settings) => ipcRenderer.invoke('process-video', videoPath, settings),
+  processVideoBatch: (videoPaths, settings) => ipcRenderer.invoke('process-video-batch', videoPaths, settings),
   getTask: (taskId) => ipcRenderer.invoke('get-task', taskId),
   getAllTasks: () => ipcRenderer.invoke('get-all-tasks'),
   getProcessedVideos: () => ipcRenderer.invoke('get-processed-videos'),
