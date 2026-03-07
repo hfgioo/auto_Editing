@@ -34,7 +34,8 @@ export default function CloudSettings() {
   }, []);
 
   const loadSettings = async () => {
-    const settings = await window.electron.loadSettings();
+    if (!window.electronAPI) return;
+    const settings = await window.electronAPI.loadSettings();
     setConfig({
       cloudProvider: settings.cloudProvider || 'local',
       ossRegion: settings.ossRegion || '',
@@ -49,7 +50,12 @@ export default function CloudSettings() {
   };
 
   const handleSave = async () => {
-    await window.electron.saveSettings(config);
+    if (!window.electronAPI) return;
+    const prev = await window.electronAPI.loadSettings();
+    await window.electronAPI.saveSettings({
+      ...prev,
+      ...config,
+    });
     alert('云存储配置已保存');
   };
 
@@ -58,23 +64,19 @@ export default function CloudSettings() {
     setTestResult(null);
 
     try {
-      // 这里可以添加测试连接的逻辑
-      // 暂时模拟测试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       if (config.cloudProvider === 'local') {
         setTestResult({ success: true, message: '本地存储无需测试' });
       } else if (config.cloudProvider === 'oss') {
-        if (!config.ossAccessKeyId || !config.ossBucket) {
+        if (!config.ossAccessKeyId || !config.ossAccessKeySecret || !config.ossRegion || !config.ossBucket) {
           setTestResult({ success: false, message: '请填写完整的 OSS 配置' });
         } else {
-          setTestResult({ success: true, message: 'OSS 连接测试成功' });
+          setTestResult({ success: true, message: 'OSS 配置完整，可用于上传' });
         }
       } else if (config.cloudProvider === 'cos') {
-        if (!config.cosSecretId || !config.cosBucket) {
+        if (!config.cosSecretId || !config.cosSecretKey || !config.cosRegion || !config.cosBucket) {
           setTestResult({ success: false, message: '请填写完整的 COS 配置' });
         } else {
-          setTestResult({ success: true, message: 'COS 连接测试成功' });
+          setTestResult({ success: true, message: 'COS 配置完整，可用于上传' });
         }
       }
     } catch (error: any) {

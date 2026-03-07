@@ -42,6 +42,15 @@ export interface AppSettings {
   videoQuality: 'low' | 'medium' | 'high';
   autoSubtitle: boolean;
   autoMusic: boolean;
+  cloudProvider?: 'local' | 'oss' | 'cos';
+  ossRegion?: string;
+  ossAccessKeyId?: string;
+  ossAccessKeySecret?: string;
+  ossBucket?: string;
+  cosSecretId?: string;
+  cosSecretKey?: string;
+  cosBucket?: string;
+  cosRegion?: string;
 }
 
 // Electron API 类型
@@ -49,6 +58,8 @@ export interface ElectronAPI {
   loadSettings: () => Promise<AppSettings>;
   saveSettings: (settings: AppSettings) => Promise<{ success: boolean }>;
   selectOutputDir: () => Promise<string | null>;
+  selectMusicFiles: () => Promise<string[]>;
+  openPath: (targetPath: string) => Promise<{ success: boolean; error?: string }>;
   processVideo: (videoPath: string, settings: AppSettings) => Promise<ProcessTask>;
   getTask: (taskId: string) => Promise<ProcessTask | undefined>;
   getAllTasks: () => Promise<ProcessTask[]>;
@@ -61,6 +72,8 @@ export interface ElectronAPI {
   getMusicTracks: () => Promise<any[]>;
   addMusicTrack: (track: any) => Promise<{ success: boolean }>;
   deleteMusicTrack: (trackId: string) => Promise<{ success: boolean }>;
+  uploadToCloud?: (filePath: string, provider: string, config: any) => Promise<any>;
+  uploadMultipleToCloud?: (filePaths: string[], provider: string, config: any) => Promise<any>;
 }
 
 declare global {

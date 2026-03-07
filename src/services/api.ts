@@ -27,6 +27,20 @@ export const api = {
     return (window as any).electronAPI.selectOutputDir();
   },
 
+  selectMusicFiles: async () => {
+    if (!(window as any).electronAPI) {
+      throw new Error('此功能仅在 Electron 环境中可用');
+    }
+    return (window as any).electronAPI.selectMusicFiles();
+  },
+
+  openPath: async (targetPath: string) => {
+    if (!(window as any).electronAPI) {
+      throw new Error('此功能仅在 Electron 环境中可用');
+    }
+    return (window as any).electronAPI.openPath(targetPath);
+  },
+
   // 视频处理
   processVideo: async (videoPath: string, settings: any) => {
     if (!(window as any).electronAPI) {
@@ -114,5 +128,12 @@ export const api = {
       throw new Error('此功能仅在 Electron 环境中可用');
     }
     return (window as any).electronAPI.deleteMusicTrack(trackId);
+  },
+
+  uploadToCloud: async (filePath: string, provider: string, config: any) => {
+    if (!(window as any).electronAPI) {
+      throw new Error('此功能仅在 Electron 环境中可用');
+    }
+    return (window as any).electronAPI.uploadToCloud(filePath, provider, config);
   },
 };

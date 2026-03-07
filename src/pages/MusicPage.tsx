@@ -24,6 +24,7 @@ const MusicPage: React.FC = () => {
   const [selectedGenre, setSelectedGenre] = useState<string>('全部');
   const [playingTrack, setPlayingTrack] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
   const genres = ['全部', '轻快', '舒缓', '史诗', '电子', '古典'];
 
@@ -46,8 +47,62 @@ const MusicPage: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const togglePlay = (trackId: string) => {
-    setPlayingTrack(playingTrack === trackId ? null : trackId);
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+      }
+    };
+  }, [audioElement]);
+
+  const handleAddMusic = async () => {
+    try {
+      const paths = await api.selectMusicFiles();
+      if (!paths || paths.length === 0) return;
+
+      for (const filePath of paths) {
+        const fileName = filePath.split(/[\\/]/).pop() || 'unknown';
+        const nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
+        const payload = {
+          name: nameWithoutExt,
+          artist: 'Unknown',
+          duration: 0,
+          genre: '轻快',
+          filePath,
+          addedAt: new Date().toISOString(),
+        };
+        await api.addMusicTrack(payload);
+      }
+
+      await loadMusicTracks();
+      alert(`已添加 ${paths.length} 首音乐`);
+    } catch (error) {
+      console.error('[MusicPage] 添加音乐失败:', error);
+      alert('添加音乐失败');
+    }
+  };
+
+  const togglePlay = (track: MusicTrack) => {
+    if (playingTrack === track.id) {
+      audioElement?.pause();
+      setPlayingTrack(null);
+      return;
+    }
+
+    if (audioElement) {
+      audioElement.pause();
+    }
+
+    const encodedPath = encodeURI(track.filePath.replace(/\\/g, '/'));
+    const audio = new Audio(`file://${encodedPath}`);
+    audio.onended = () => setPlayingTrack(null);
+    audio.play().catch((error) => {
+      console.error('[MusicPage] 播放失败:', error);
+      alert('播放失败，请确认文件路径有效且格式受支持');
+    });
+
+    setAudioElement(audio);
+    setPlayingTrack(track.id);
   };
 
   const handleDelete = async (trackId: string) => {
@@ -82,7 +137,10 @@ const MusicPage: React.FC = () => {
             管理视频背景音乐，共 {tracks.length} 首
           </p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium">
+        <button
+          onClick={handleAddMusic}
+          className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+        >
           <PlusIcon className="w-5 h-5" />
           添加音乐
         </button>
@@ -158,7 +216,7 @@ const MusicPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredTracks.map((track, index) => (
+                {filteredTracks.map((track) => (
                   <tr
                     key={track.id}
                     className={`
@@ -168,7 +226,7 @@ const MusicPage: React.FC = () => {
                   >
                     <td className="px-6 py-4">
                       <button
-                        onClick={() => togglePlay(track.id)}
+                        onClick={() => togglePlay(track)}
                         className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-full transition-colors"
                       >
                         {playingTrack === track.id ? (

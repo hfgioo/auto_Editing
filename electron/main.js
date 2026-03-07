@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const VideoProcessor = require('./VideoProcessor');
@@ -79,6 +79,37 @@ ipcMain.handle('select-output-dir', async () => {
     return result.filePaths[0];
   }
   return null;
+});
+
+ipcMain.handle('select-music-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+
+  if (!result.canceled) {
+    return result.filePaths;
+  }
+  return [];
+});
+
+ipcMain.handle('open-path', async (_event, targetPath) => {
+  if (!targetPath || typeof targetPath !== 'string') {
+    return { success: false, error: '路径无效' };
+  }
+
+  try {
+    const errorMessage = await shell.openPath(targetPath);
+    if (errorMessage) {
+      return { success: false, error: errorMessage };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 // 视频处理

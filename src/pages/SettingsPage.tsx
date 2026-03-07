@@ -431,7 +431,7 @@ const SettingsPage: React.FC = () => {
                 className="flex-1 px-4 py-2 bg-claude-surface border border-claude-border rounded-claude text-claude-text-primary"
               />
               <button
-                onClick={handleSelectOutputPath}
+                onClick={handleSelectOutputDir}
                 className="btn-secondary"
               >
                 选择文件夹

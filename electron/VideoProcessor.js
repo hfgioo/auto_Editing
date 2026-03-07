@@ -1,9 +1,10 @@
 const { ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const fetch = require('node-fetch');
 
 class VideoProcessor {
@@ -114,9 +115,16 @@ class VideoProcessor {
 
   async extractVideoInfo(videoPath) {
     try {
-      const { stdout } = await execAsync(
-        `ffprobe -v quiet -print_format json -show_format -show_streams "${videoPath}"`
-      );
+      await fs.access(videoPath);
+      const { stdout } = await execFileAsync('ffprobe', [
+        '-v',
+        'quiet',
+        '-print_format',
+        'json',
+        '-show_format',
+        '-show_streams',
+        videoPath,
+      ]);
       const info = JSON.parse(stdout);
       
       const videoStream = info.streams.find(s => s.codec_type === 'video');
@@ -133,7 +141,16 @@ class VideoProcessor {
       };
     } catch (error) {
       console.error('[VideoProcessor] 提取视频信息失败:', error);
-      throw new Error('无法读取视频信息，请确保文件格式正确');
+      if (error?.code === 'ENOENT') {
+        throw new Error('未找到 ffprobe。请先安装 FFmpeg，并确保 ffprobe 已加入系统 PATH');
+      }
+      if (error?.message?.includes('No such file') || error?.message?.includes('ENOENT')) {
+        throw new Error('视频文件不存在或路径不可访问，请检查文件是否被移动/删除');
+      }
+      if (error?.stderr && String(error.stderr).includes('Invalid data found when processing input')) {
+        throw new Error('视频文件损坏或编码不受支持，请尝试先用播放器确认可正常播放');
+      }
+      throw new Error(`无法读取视频信息: ${error?.message || '未知错误'}`);
     }
   }
 

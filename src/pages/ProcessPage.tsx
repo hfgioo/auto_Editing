@@ -137,9 +137,11 @@ const ProcessPage: React.FC = () => {
                 
                 {task.status === 'completed' && task.result?.outputPath && (
                   <button
-                    onClick={() => {
-                      // 打开输出文件夹
-                      console.log('打开:', task.result.outputPath);
+                    onClick={async () => {
+                      const result = await api.openPath(task.result!.outputPath!);
+                      if (!result?.success) {
+                        alert(`打开失败: ${result?.error || '未知错误'}`);
+                      }
                     }}
                     className="text-sm text-orange-600 hover:text-orange-700 font-medium"
                   >

@@ -4,7 +4,7 @@
   "description": "AI-powered automatic video editing desktop application",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --no-sandbox\"",
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5176 && electron . --no-sandbox\"",
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
