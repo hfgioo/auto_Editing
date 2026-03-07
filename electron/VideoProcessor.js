@@ -420,7 +420,11 @@ class VideoProcessor {
       throw new Error('AI 返回内容为空或格式不正确');
     }
 
-    return JSON.parse(analysisText);
+    const parsed = this.parseAnalysisJSON(analysisText);
+    if (!parsed) {
+      throw new Error(`AI 返回内容无法解析为剪辑 JSON: ${analysisText.slice(0, 220)}`);
+    }
+    return parsed;
   }
 
   async parseJSONOrSSEBody(response) {
@@ -498,6 +502,43 @@ class VideoProcessor {
     } catch (_e) {
       return null;
     }
+  }
+
+  parseAnalysisJSON(text) {
+    if (typeof text !== 'string' || !text.trim()) return null;
+
+    // 先尝试纯 JSON（最快路径）
+    try {
+      return JSON.parse(text);
+    } catch (_e) {
+      // ignore
+    }
+
+    // 去掉常见推理标签，兼容某些模型输出 <think>...</think>
+    const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    try {
+      return JSON.parse(withoutThink);
+    } catch (_e) {
+      // ignore
+    }
+
+    // 再尝试从包裹文本中提取 JSON 对象
+    const extracted = this.extractJSONObject(withoutThink);
+    if (extracted) return extracted;
+
+    // 兼容数组根节点（极少数模型会返回数组）
+    const start = withoutThink.indexOf('[');
+    const end = withoutThink.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      const arrText = withoutThink.slice(start, end + 1);
+      try {
+        return JSON.parse(arrText);
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    return null;
   }
 
   normalizeSegmentWindow(start, end, maxDuration, maxClipDuration = 12, minClipDuration = 2) {
