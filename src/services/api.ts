@@ -20,6 +20,13 @@ export const api = {
     return (window as any).electronAPI.saveSettings(settings);
   },
 
+  testAIConnection: async (settings: any) => {
+    if (!(window as any).electronAPI) {
+      throw new Error('此功能仅在 Electron 环境中可用');
+    }
+    return (window as any).electronAPI.testAIConnection(settings);
+  },
+
   selectOutputDir: async () => {
     if (!(window as any).electronAPI) {
       throw new Error('此功能仅在 Electron 环境中可用');

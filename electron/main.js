@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const fetch = require('node-fetch');
 const VideoProcessor = require('./VideoProcessor');
 const CloudUploader = require('./CloudUploader');
 const db = require('./database');
@@ -68,6 +69,74 @@ ipcMain.handle('save-settings', async (event, settings) => {
   } catch (error) {
     console.error('[Main] 保存设置失败:', error);
     throw error;
+  }
+});
+
+ipcMain.handle('test-ai-connection', async (_event, settings) => {
+  try {
+    if (!settings || !settings.aiProvider) {
+      return { success: false, message: '缺少 AI 配置' };
+    }
+
+    if (settings.aiProvider === 'gemini') {
+      if (!settings.geminiApiKey) {
+        return { success: false, message: '请先填写 Gemini API Key' };
+      }
+      const base = settings.geminiBaseURL || 'https://generativelanguage.googleapis.com/v1beta';
+      const model = settings.geminiModelId || 'gemini-1.5-flash';
+      const url = `${base}/models/${model}:generateContent?key=${settings.geminiApiKey}`;
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'ping' }] }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        return { success: false, message: `Gemini 连接失败: ${resp.status} ${text}` };
+      }
+      return { success: true, message: 'Gemini 连接测试成功' };
+    }
+
+    if (settings.aiProvider === 'openai' || settings.aiProvider === 'custom') {
+      const apiKey = settings.aiProvider === 'openai' ? settings.openaiApiKey : settings.customApiKey;
+      const baseURL = settings.aiProvider === 'openai'
+        ? (settings.openaiBaseURL || 'https://api.openai.com/v1')
+        : settings.customBaseURL;
+      const model = settings.aiProvider === 'openai'
+        ? (settings.openaiModelId || 'gpt-4o-mini')
+        : settings.customModelId;
+
+      if (!apiKey || !baseURL || !model) {
+        return { success: false, message: '请先填写完整的 API Key / Base URL / Model' };
+      }
+
+      const resp = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        return { success: false, message: `连接失败: ${resp.status} ${text}` };
+      }
+      return { success: true, message: `${settings.aiProvider === 'openai' ? 'OpenAI' : '自定义 API'} 连接测试成功` };
+    }
+
+    return { success: false, message: '不支持的 AI 提供商' };
+  } catch (error) {
+    return { success: false, message: `连接测试异常: ${error.message}` };
   }
 });
 

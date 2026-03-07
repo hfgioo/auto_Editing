@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设置
   loadSettings: () => ipcRenderer.invoke('load-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  testAIConnection: (settings) => ipcRenderer.invoke('test-ai-connection', settings),
   selectOutputDir: () => ipcRenderer.invoke('select-output-dir'),
   selectMusicFiles: () => ipcRenderer.invoke('select-music-files'),
   openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),

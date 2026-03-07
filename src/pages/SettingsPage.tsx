@@ -29,6 +29,8 @@ const SettingsPage: React.FC = () => {
   });
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [testingAI, setTestingAI] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // 常用模型列表
   const geminiModels = [
@@ -80,6 +82,22 @@ const SettingsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('选择输出目录失败:', error);
+    }
+  };
+
+  const handleTestAIConnection = async () => {
+    setTestingAI(true);
+    setAiTestResult(null);
+    try {
+      const result = await window.electronAPI.testAIConnection(settings);
+      setAiTestResult(result);
+    } catch (error) {
+      setAiTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : '连接测试失败',
+      });
+    } finally {
+      setTestingAI(false);
     }
   };
 
@@ -326,6 +344,21 @@ const SettingsPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={handleTestAIConnection}
+                disabled={testingAI}
+                className="btn-secondary"
+              >
+                {testingAI ? '测试中...' : '测试 AI 连接'}
+              </button>
+              {aiTestResult && (
+                <span className={`text-sm ${aiTestResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                  {aiTestResult.message}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* 输出设置 */}

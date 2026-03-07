@@ -58,6 +58,7 @@ export interface AppSettings {
 export interface ElectronAPI {
   loadSettings: () => Promise<AppSettings>;
   saveSettings: (settings: AppSettings) => Promise<{ success: boolean }>;
+  testAIConnection: (settings: AppSettings) => Promise<{ success: boolean; message: string }>;
   selectOutputDir: () => Promise<string | null>;
   selectMusicFiles: () => Promise<string[]>;
   openPath: (targetPath: string) => Promise<{ success: boolean; error?: string }>;
