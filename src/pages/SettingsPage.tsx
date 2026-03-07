@@ -27,6 +27,12 @@ const SettingsPage: React.FC = () => {
     customApiKey: '',
     customBaseURL: '',
     customModelId: '',
+    analysisApiKey: '',
+    analysisBaseURL: '',
+    analysisModelId: '',
+    transcriptionApiKey: '',
+    transcriptionBaseURL: '',
+    transcriptionModel: 'whisper-1',
     outputPath: './output',
     videoQuality: 'high',
     autoSubtitle: true,
@@ -143,11 +149,12 @@ const SettingsPage: React.FC = () => {
             <>
               <div className={cardCls}>
                 <label className={labelCls}>AI 供应商</label>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
                   {[
                     { value: 'gemini', label: 'Google Gemini' },
                     { value: 'openai', label: 'OpenAI' },
                     { value: 'custom', label: '自定义兼容 API' },
+                    { value: 'compatible', label: '兼容网关模式' },
                   ].map((provider) => (
                     <button
                       key={provider.value}
@@ -161,6 +168,84 @@ const SettingsPage: React.FC = () => {
                       <span className="font-semibold text-[var(--ink-soft)]">{provider.label}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className={cardCls}>
+                <label className={labelCls}>分析接口（可选覆盖）</label>
+                <p className="mb-3 text-xs text-[var(--muted)]">
+                  填写后将优先使用 OpenAI 兼容协议调用此接口，可对接任意模型网关（不限 Gemini/OpenAI）。
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelCls}>Analysis API Key</label>
+                    <input
+                      type="password"
+                      value={settings.analysisApiKey || ''}
+                      onChange={(e) => setSettings({ ...settings, analysisApiKey: e.target.value })}
+                      placeholder="输入分析接口 API Key"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Analysis Base URL</label>
+                    <input
+                      type="text"
+                      value={settings.analysisBaseURL || ''}
+                      onChange={(e) => setSettings({ ...settings, analysisBaseURL: e.target.value })}
+                      placeholder="https://your-gateway.example.com/v1"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Analysis Model ID</label>
+                    <input
+                      type="text"
+                      value={settings.analysisModelId || ''}
+                      onChange={(e) => setSettings({ ...settings, analysisModelId: e.target.value })}
+                      placeholder="gpt-4o-mini / qwen-vl / glm-4v ..."
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className={cardCls}>
+                <label className={labelCls}>字幕转写接口（可选覆盖）</label>
+                <p className="mb-3 text-xs text-[var(--muted)]">
+                  填写后，自动字幕将优先使用该转写接口；不填则回退到可用的 OpenAI 兼容配置。
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelCls}>Transcription API Key</label>
+                    <input
+                      type="password"
+                      value={settings.transcriptionApiKey || ''}
+                      onChange={(e) => setSettings({ ...settings, transcriptionApiKey: e.target.value })}
+                      placeholder="输入字幕转写 API Key"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Transcription Base URL</label>
+                    <input
+                      type="text"
+                      value={settings.transcriptionBaseURL || ''}
+                      onChange={(e) => setSettings({ ...settings, transcriptionBaseURL: e.target.value })}
+                      placeholder="https://your-transcription.example.com/v1"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Transcription Model</label>
+                    <input
+                      type="text"
+                      value={settings.transcriptionModel || settings.transcriptionModelId || ''}
+                      onChange={(e) => setSettings({ ...settings, transcriptionModel: e.target.value, transcriptionModelId: e.target.value })}
+                      placeholder="whisper-1 / gpt-4o-mini-transcribe ..."
+                      className={inputCls}
+                    />
+                  </div>
                 </div>
               </div>
 

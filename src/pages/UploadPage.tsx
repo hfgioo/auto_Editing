@@ -81,16 +81,24 @@ const UploadPage: React.FC = () => {
     try {
       const settings = await api.loadSettings();
 
-      if (settings.aiProvider === 'gemini' && !settings.geminiApiKey) {
-        alert('请先在设置中配置 Gemini API Key');
-        return;
+      const hasAnalysisOverride = !!(settings.analysisApiKey && settings.analysisBaseURL && settings.analysisModelId);
+      const hasGemini = !!(settings.geminiApiKey && settings.geminiBaseURL && settings.geminiModelId);
+      const hasOpenAI = !!(settings.openaiApiKey && settings.openaiBaseURL && settings.openaiModelId);
+      const hasCustom = !!(settings.customApiKey && settings.customBaseURL && settings.customModelId);
+
+      let analysisReady = false;
+      if (hasAnalysisOverride) {
+        analysisReady = true;
+      } else if (settings.aiProvider === 'gemini') {
+        analysisReady = hasGemini;
+      } else if (settings.aiProvider === 'openai') {
+        analysisReady = hasOpenAI;
+      } else {
+        analysisReady = hasCustom || hasOpenAI;
       }
-      if (settings.aiProvider === 'openai' && !settings.openaiApiKey) {
-        alert('请先在设置中配置 OpenAI API Key');
-        return;
-      }
-      if (settings.aiProvider === 'custom' && (!settings.customApiKey || !settings.customBaseURL)) {
-        alert('请先在设置中配置自定义 API');
+
+      if (!analysisReady) {
+        alert('请先在设置中完成 AI 分析配置（可用分析接口覆盖，或配置 Gemini/OpenAI/自定义兼容接口）');
         return;
       }
 

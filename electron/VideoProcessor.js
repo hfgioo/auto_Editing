@@ -243,21 +243,7 @@ class VideoProcessor {
   }
 
   async callAIAPI(frames, videoInfo, settings) {
-    let apiUrl, apiKey, model;
-    
-    if (settings.aiProvider === 'gemini') {
-      apiUrl = `${settings.geminiBaseURL}/models/${settings.geminiModelId}:generateContent`;
-      apiKey = settings.geminiApiKey;
-      model = settings.geminiModelId;
-    } else if (settings.aiProvider === 'openai') {
-      apiUrl = `${settings.openaiBaseURL}/chat/completions`;
-      apiKey = settings.openaiApiKey;
-      model = settings.openaiModelId;
-    } else {
-      apiUrl = `${settings.customBaseURL}/chat/completions`;
-      apiKey = settings.customApiKey;
-      model = settings.customModelId;
-    }
+    const analysisConfig = this.resolveAnalysisConfig(settings);
 
     // 读取帧图片并转为 base64
     const frameData = await Promise.all(
@@ -291,9 +277,9 @@ class VideoProcessor {
 
     let response;
     
-    if (settings.aiProvider === 'gemini') {
+    if (analysisConfig.provider === 'gemini') {
       // Gemini API 格式
-      response = await fetch(`${apiUrl}?key=${apiKey}`, {
+      response = await fetch(`${analysisConfig.apiUrl}?key=${analysisConfig.apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -311,15 +297,15 @@ class VideoProcessor {
         }),
       });
     } else {
-      // OpenAI / 自定义 API 格式
-      response = await fetch(apiUrl, {
+      // OpenAI 兼容 API 格式（支持任意兼容供应商）
+      response = await fetch(analysisConfig.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${analysisConfig.apiKey}`,
         },
         body: JSON.stringify({
-          model,
+          model: analysisConfig.model,
           messages: [{
             role: 'user',
             content: [
@@ -343,7 +329,7 @@ class VideoProcessor {
     const data = await response.json();
     
     let analysisText;
-    if (settings.aiProvider === 'gemini') {
+    if (analysisConfig.provider === 'gemini') {
       analysisText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     } else {
       analysisText = data?.choices?.[0]?.message?.content;
@@ -475,28 +461,16 @@ class VideoProcessor {
   }
 
   async callAIForSubtitles(audioPath, analysis, settings) {
-    const provider = settings.aiProvider;
-    const canUseTranscriptionApi = provider === 'openai' || provider === 'custom';
-
-    if (!canUseTranscriptionApi) {
-      throw new Error('当前 AI 提供商不支持语音转字幕，请切换到 OpenAI 或自定义兼容接口');
-    }
-
-    const apiKey = provider === 'openai' ? settings.openaiApiKey : settings.customApiKey;
-    const baseURL = provider === 'openai' ? settings.openaiBaseURL : settings.customBaseURL;
-
-    if (!apiKey || !baseURL) {
-      throw new Error('字幕生成需要有效的 API Key 与 Base URL');
-    }
+    const transcriptionConfig = this.resolveTranscriptionConfig(settings);
 
     const client = new OpenAI({
-      apiKey,
-      baseURL,
+      apiKey: transcriptionConfig.apiKey,
+      baseURL: transcriptionConfig.baseURL,
     });
 
     const transcription = await client.audio.transcriptions.create({
       file: fsSync.createReadStream(audioPath),
-      model: settings.transcriptionModelId || 'whisper-1',
+      model: transcriptionConfig.model,
       response_format: 'verbose_json',
       timestamp_granularities: ['segment'],
       language: 'zh',
@@ -513,6 +487,103 @@ class VideoProcessor {
       endTime: this.formatSRTTime(seg.end || seg.start || 0),
       text: (seg.text || '').trim(),
     }));
+  }
+
+  resolveAnalysisConfig(settings) {
+    if (settings.analysisApiKey && settings.analysisBaseURL && settings.analysisModelId) {
+      const base = String(settings.analysisBaseURL).replace(/\/$/, '');
+      return {
+        provider: 'openai_compatible',
+        apiUrl: `${base}/chat/completions`,
+        apiKey: settings.analysisApiKey,
+        model: settings.analysisModelId,
+      };
+    }
+
+    if (settings.aiProvider === 'gemini') {
+      if (!settings.geminiApiKey || !settings.geminiBaseURL || !settings.geminiModelId) {
+        throw new Error('Gemini 分析配置不完整，请检查 API Key / Base URL / Model');
+      }
+      const base = String(settings.geminiBaseURL).replace(/\/$/, '');
+      return {
+        provider: 'gemini',
+        apiUrl: `${base}/models/${settings.geminiModelId}:generateContent`,
+        apiKey: settings.geminiApiKey,
+        model: settings.geminiModelId,
+      };
+    }
+
+    const openAICompat = this.resolveOpenAICompatibleConfig(settings);
+    if (!openAICompat) {
+      throw new Error('AI 分析配置不完整，请填写分析接口或 OpenAI 兼容配置');
+    }
+
+    return {
+      provider: 'openai_compatible',
+      apiUrl: `${openAICompat.baseURL}/chat/completions`,
+      apiKey: openAICompat.apiKey,
+      model: openAICompat.modelId,
+    };
+  }
+
+  resolveTranscriptionConfig(settings) {
+    if (settings.transcriptionApiKey && settings.transcriptionBaseURL) {
+      const base = String(settings.transcriptionBaseURL).replace(/\/$/, '');
+      return {
+        apiKey: settings.transcriptionApiKey,
+        baseURL: base,
+        model: settings.transcriptionModelId || settings.transcriptionModel || 'whisper-1',
+      };
+    }
+
+    const openAICompat = this.resolveOpenAICompatibleConfig(settings);
+    if (!openAICompat) {
+      throw new Error('字幕转写配置不完整。请填写“字幕转写 API 配置”或可用的 OpenAI 兼容配置');
+    }
+
+    return {
+      apiKey: openAICompat.apiKey,
+      baseURL: openAICompat.baseURL,
+      model: settings.transcriptionModelId || settings.transcriptionModel || 'whisper-1',
+    };
+  }
+
+  resolveOpenAICompatibleConfig(settings) {
+    if (settings.aiProvider === 'openai') {
+      if (!settings.openaiApiKey || !settings.openaiBaseURL || !settings.openaiModelId) return null;
+      return {
+        apiKey: settings.openaiApiKey,
+        baseURL: String(settings.openaiBaseURL).replace(/\/$/, ''),
+        modelId: settings.openaiModelId,
+      };
+    }
+
+    if (settings.aiProvider === 'custom') {
+      if (!settings.customApiKey || !settings.customBaseURL || !settings.customModelId) return null;
+      return {
+        apiKey: settings.customApiKey,
+        baseURL: String(settings.customBaseURL).replace(/\/$/, ''),
+        modelId: settings.customModelId,
+      };
+    }
+
+    if (settings.customApiKey && settings.customBaseURL && settings.customModelId) {
+      return {
+        apiKey: settings.customApiKey,
+        baseURL: String(settings.customBaseURL).replace(/\/$/, ''),
+        modelId: settings.customModelId,
+      };
+    }
+
+    if (settings.openaiApiKey && settings.openaiBaseURL && settings.openaiModelId) {
+      return {
+        apiKey: settings.openaiApiKey,
+        baseURL: String(settings.openaiBaseURL).replace(/\/$/, ''),
+        modelId: settings.openaiModelId,
+      };
+    }
+
+    return null;
   }
 
   formatSRTTime(seconds) {

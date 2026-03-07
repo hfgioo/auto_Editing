@@ -28,7 +28,7 @@ export interface ProcessTask {
 }
 
 export interface AppSettings {
-  aiProvider: 'gemini' | 'openai' | 'custom';
+  aiProvider: 'gemini' | 'openai' | 'custom' | 'compatible';
   geminiApiKey: string;
   geminiBaseURL: string;
   geminiModelId: string;
@@ -38,6 +38,12 @@ export interface AppSettings {
   customApiKey: string;
   customBaseURL: string;
   customModelId: string;
+  analysisApiKey?: string;
+  analysisBaseURL?: string;
+  analysisModelId?: string;
+  transcriptionApiKey?: string;
+  transcriptionBaseURL?: string;
+  transcriptionModel?: string;
   transcriptionModelId?: string;
   outputPath: string;
   videoQuality: 'low' | 'medium' | 'high';

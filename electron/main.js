@@ -78,6 +78,28 @@ ipcMain.handle('test-ai-connection', async (_event, settings) => {
       return { success: false, message: '缺少 AI 配置' };
     }
 
+    if (settings.analysisApiKey && settings.analysisBaseURL && settings.analysisModelId) {
+      const base = String(settings.analysisBaseURL).replace(/\/$/, '');
+      const resp = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settings.analysisApiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.analysisModelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        return { success: false, message: `分析接口连接失败: ${resp.status} ${text}` };
+      }
+      return { success: true, message: '分析接口（OpenAI 兼容）连接测试成功' };
+    }
+
     if (settings.aiProvider === 'gemini') {
       if (!settings.geminiApiKey) {
         return { success: false, message: '请先填写 Gemini API Key' };
@@ -101,12 +123,13 @@ ipcMain.handle('test-ai-connection', async (_event, settings) => {
       return { success: true, message: 'Gemini 连接测试成功' };
     }
 
-    if (settings.aiProvider === 'openai' || settings.aiProvider === 'custom') {
-      const apiKey = settings.aiProvider === 'openai' ? settings.openaiApiKey : settings.customApiKey;
-      const baseURL = settings.aiProvider === 'openai'
+    if (settings.aiProvider === 'openai' || settings.aiProvider === 'custom' || settings.aiProvider === 'compatible') {
+      const useOpenAI = settings.aiProvider === 'openai' || (settings.aiProvider === 'compatible' && settings.openaiApiKey);
+      const apiKey = useOpenAI ? settings.openaiApiKey : settings.customApiKey;
+      const baseURL = useOpenAI
         ? (settings.openaiBaseURL || 'https://api.openai.com/v1')
         : settings.customBaseURL;
-      const model = settings.aiProvider === 'openai'
+      const model = useOpenAI
         ? (settings.openaiModelId || 'gpt-4o-mini')
         : settings.customModelId;
 
@@ -131,10 +154,10 @@ ipcMain.handle('test-ai-connection', async (_event, settings) => {
         const text = await resp.text();
         return { success: false, message: `连接失败: ${resp.status} ${text}` };
       }
-      return { success: true, message: `${settings.aiProvider === 'openai' ? 'OpenAI' : '自定义 API'} 连接测试成功` };
+      return { success: true, message: `${useOpenAI ? 'OpenAI 兼容接口' : '自定义 API'} 连接测试成功` };
     }
 
-    return { success: false, message: '不支持的 AI 提供商' };
+    return { success: false, message: '请配置可用的分析接口或选择受支持的 AI 提供商' };
   } catch (error) {
     return { success: false, message: `连接测试异常: ${error.message}` };
   }
@@ -304,6 +327,11 @@ function getDefaultSettings() {
     customApiKey: '',
     customBaseURL: '',
     customModelId: '',
+    analysisApiKey: '',
+    analysisBaseURL: '',
+    analysisModelId: '',
+    transcriptionApiKey: '',
+    transcriptionBaseURL: '',
     transcriptionModelId: 'whisper-1',
     outputPath: path.join(app.getPath('videos'), 'AI_Edited'),
     videoQuality: 'high',
