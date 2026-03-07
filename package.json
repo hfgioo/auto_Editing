@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --no-sandbox\"",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
     "build:win": "npm run build && electron-builder --win",

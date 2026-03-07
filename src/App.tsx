@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   CloudArrowUpIcon,
   Cog6ToothIcon,
@@ -15,6 +15,10 @@ import MusicPage from './pages/MusicPage';
 import SettingsPage from './pages/SettingsPage';
 
 type PageType = 'upload' | 'process' | 'subtitle' | 'music' | 'settings';
+
+function isElectron(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI;
+}
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('upload');
