@@ -6,6 +6,12 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const fetch = require('node-fetch');
+const { File: NodeFile } = require('node:buffer');
+
+if (typeof globalThis.File === 'undefined') {
+  globalThis.File = NodeFile;
+}
+
 const OpenAI = require('openai');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
@@ -78,11 +84,22 @@ class VideoProcessor {
       let subtitles = [];
       let finalPath = editedPath;
       if (settings.autoSubtitle) {
-        await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
-        subtitles = await this.generateSubtitles(editedPath, analysis, settings);
-        finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
-        console.log('[VideoProcessor] 字幕生成完成:', subtitles.length, '条');
-        await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
+        const subtitleDecision = this.shouldGenerateSubtitles(analysis, [videoInfo]);
+        if (subtitleDecision.shouldGenerate) {
+          await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
+          subtitles = await this.generateSubtitles(editedPath, analysis, settings);
+          if (subtitles.length > 0) {
+            finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
+            console.log('[VideoProcessor] 字幕生成完成:', subtitles.length, '条');
+            await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
+          } else {
+            console.log('[VideoProcessor] 跳过字幕烧录: 转写结果为空');
+            await this.updateStep(taskId, 'subtitle', 'skipped', onProgress);
+          }
+        } else {
+          console.log(`[VideoProcessor] 跳过字幕生成: ${subtitleDecision.reason}`);
+          await this.updateStep(taskId, 'subtitle', 'skipped', onProgress);
+        }
       }
 
       // 步骤 5: 添加背景音乐
@@ -164,10 +181,21 @@ class VideoProcessor {
       let subtitles = [];
       let finalPath = editedPath;
       if (settings.autoSubtitle) {
-        await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
-        subtitles = await this.generateSubtitles(editedPath, montagePlan, settings);
-        finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
-        await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
+        const subtitleDecision = this.shouldGenerateSubtitles(montagePlan, sourceInfos);
+        if (subtitleDecision.shouldGenerate) {
+          await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
+          subtitles = await this.generateSubtitles(editedPath, montagePlan, settings);
+          if (subtitles.length > 0) {
+            finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
+            await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
+          } else {
+            console.log('[VideoProcessor] 跳过字幕烧录: 转写结果为空');
+            await this.updateStep(taskId, 'subtitle', 'skipped', onProgress);
+          }
+        } else {
+          console.log(`[VideoProcessor] 跳过字幕生成: ${subtitleDecision.reason}`);
+          await this.updateStep(taskId, 'subtitle', 'skipped', onProgress);
+        }
       }
 
       if (settings.autoMusic) {
@@ -347,6 +375,10 @@ class VideoProcessor {
     }
   ],
   "summary": "视频内容总结",
+  "subtitleRecommendation": {
+    "needed": true 或 false,
+    "reason": "是否建议生成字幕及原因（如纯音乐/无口播可不加字幕）"
+  },
   "suggestedMusic": {
     "genre": "建议的音乐类型",
     "mood": "情绪",
@@ -424,7 +456,7 @@ class VideoProcessor {
     if (!parsed) {
       throw new Error(`AI 返回内容无法解析为剪辑 JSON: ${analysisText.slice(0, 220)}`);
     }
-    return parsed;
+    return this.normalizeAnalysis(parsed);
   }
 
   async parseJSONOrSSEBody(response) {
@@ -541,6 +573,56 @@ class VideoProcessor {
     return null;
   }
 
+  normalizeAnalysis(raw) {
+    if (!raw || typeof raw !== 'object') {
+      return { highlights: [] };
+    }
+
+    const normalized = { ...raw };
+    if (!Array.isArray(normalized.highlights)) {
+      normalized.highlights = [];
+    }
+
+    const rec = normalized.subtitleRecommendation;
+    if (rec && typeof rec === 'object') {
+      if (typeof rec.needed !== 'boolean') {
+        if (typeof rec.needed === 'string') {
+          const lowered = rec.needed.trim().toLowerCase();
+          rec.needed = ['true', 'yes', '1', 'needed', 'need'].includes(lowered);
+        } else {
+          delete rec.needed;
+        }
+      }
+      if (rec.reason != null) {
+        rec.reason = String(rec.reason);
+      }
+    }
+
+    return normalized;
+  }
+
+  shouldGenerateSubtitles(analysis, sourceInfos = []) {
+    const hasAudio = sourceInfos.some((info) => !!info?.hasAudio);
+    if (!hasAudio) {
+      return { shouldGenerate: false, reason: '视频无音轨' };
+    }
+
+    const recommendation = analysis?.subtitleRecommendation;
+    if (recommendation && typeof recommendation?.needed === 'boolean') {
+      return {
+        shouldGenerate: recommendation.needed,
+        reason: recommendation.reason || '按 AI 内容分析结果决定',
+      };
+    }
+
+    const summary = String(analysis?.summary || '').toLowerCase();
+    if (/(纯音乐|bgm|无对白|无口播|无语音|纯画面|montage|b-roll)/i.test(summary)) {
+      return { shouldGenerate: false, reason: '内容更偏向无口播画面' };
+    }
+
+    return { shouldGenerate: true, reason: '默认开启字幕生成' };
+  }
+
   normalizeSegmentWindow(start, end, maxDuration, maxClipDuration = 12, minClipDuration = 2) {
     const safeStart = Math.max(0, Number(start) || 0);
     const safeEnd = Math.min(maxDuration, Number(end) || safeStart);
@@ -648,6 +730,10 @@ class VideoProcessor {
       .map((a) => a?.suggestedMusic)
       .find(Boolean) || { genre: '轻快', mood: '中性', tempo: '中速' };
 
+    const subtitleRecommendation = analyses
+      .map((a) => a?.subtitleRecommendation)
+      .find((rec) => rec && typeof rec.needed === 'boolean') || { needed: true, reason: '默认建议生成字幕' };
+
     return {
       mode: 'smart_montage',
       contentMode: mode,
@@ -657,6 +743,7 @@ class VideoProcessor {
       totalDuration,
       segments: limited,
       suggestedMusic,
+      subtitleRecommendation,
       summary: `已自动从 ${videoPaths.length} 个视频智能筛选 ${limited.length} 个片段并完成排序`,
     };
   }
@@ -929,7 +1016,7 @@ class VideoProcessor {
 
     const segments = Array.isArray(transcription?.segments) ? transcription.segments : [];
     if (segments.length === 0) {
-      throw new Error('语音转写结果为空，请检查音频质量或更换模型');
+      return [];
     }
 
     return segments.map((seg, idx) => ({

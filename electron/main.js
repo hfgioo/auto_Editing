@@ -2,6 +2,12 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('path');
 const fs = require('fs').promises;
 const fetch = require('node-fetch');
+const { File: NodeFile } = require('node:buffer');
+
+if (typeof globalThis.File === 'undefined') {
+  globalThis.File = NodeFile;
+}
+
 const VideoProcessor = require('./VideoProcessor');
 const CloudUploader = require('./CloudUploader');
 const db = require('./database');
