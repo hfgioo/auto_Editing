@@ -1,11 +1,14 @@
 const { ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const fetch = require('node-fetch');
+const OpenAI = require('openai');
+const db = require('./database');
 
 class VideoProcessor {
   constructor() {
@@ -371,28 +374,44 @@ class VideoProcessor {
   }
 
   async callAIForSubtitles(audioPath, analysis, settings) {
-    // 这里应该调用语音识别 API（如 Whisper）
-    // 暂时基于分析结果生成简单字幕
-    const subtitles = [];
-    
-    analysis.highlights.forEach((highlight, index) => {
-      const duration = highlight.endTime - highlight.startTime;
-      const segmentCount = Math.ceil(duration / 3); // 每 3 秒一条字幕
-      
-      for (let i = 0; i < segmentCount; i++) {
-        const startTime = highlight.startTime + (i * 3);
-        const endTime = Math.min(startTime + 3, highlight.endTime);
-        
-        subtitles.push({
-          index: subtitles.length + 1,
-          startTime: this.formatSRTTime(startTime),
-          endTime: this.formatSRTTime(endTime),
-          text: `${highlight.reason} (片段 ${index + 1})`,
-        });
-      }
+    const provider = settings.aiProvider;
+    const canUseTranscriptionApi = provider === 'openai' || provider === 'custom';
+
+    if (!canUseTranscriptionApi) {
+      throw new Error('当前 AI 提供商不支持语音转字幕，请切换到 OpenAI 或自定义兼容接口');
+    }
+
+    const apiKey = provider === 'openai' ? settings.openaiApiKey : settings.customApiKey;
+    const baseURL = provider === 'openai' ? settings.openaiBaseURL : settings.customBaseURL;
+
+    if (!apiKey || !baseURL) {
+      throw new Error('字幕生成需要有效的 API Key 与 Base URL');
+    }
+
+    const client = new OpenAI({
+      apiKey,
+      baseURL,
     });
-    
-    return subtitles;
+
+    const transcription = await client.audio.transcriptions.create({
+      file: fsSync.createReadStream(audioPath),
+      model: settings.transcriptionModelId || 'whisper-1',
+      response_format: 'verbose_json',
+      timestamp_granularities: ['segment'],
+      language: 'zh',
+    });
+
+    const segments = Array.isArray(transcription?.segments) ? transcription.segments : [];
+    if (segments.length === 0) {
+      throw new Error('语音转写结果为空，请检查音频质量或更换模型');
+    }
+
+    return segments.map((seg, idx) => ({
+      index: idx + 1,
+      startTime: this.formatSRTTime(seg.start || 0),
+      endTime: this.formatSRTTime(seg.end || seg.start || 0),
+      text: (seg.text || '').trim(),
+    }));
   }
 
   formatSRTTime(seconds) {
@@ -404,10 +423,65 @@ class VideoProcessor {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
   }
 
+  pickMusicBySuggestion(tracks, suggestedMusic) {
+    if (!tracks || tracks.length === 0) return null;
+
+    const suggestionText = typeof suggestedMusic === 'string'
+      ? suggestedMusic
+      : JSON.stringify(suggestedMusic || {});
+    const normalized = suggestionText.toLowerCase();
+
+    const matched = tracks.find((t) => normalized.includes(String(t.genre || '').toLowerCase()));
+    return matched || tracks[0];
+  }
+
   async addMusic(videoPath, analysis, settings) {
-    // 这里应该根据 analysis.suggestedMusic 选择合适的背景音乐
-    // 暂时跳过音乐添加
-    return videoPath;
+    let musicPath = settings.musicPath;
+
+    if (!musicPath) {
+      const tracks = db.getAllMusicTracks();
+      const selectedTrack = this.pickMusicBySuggestion(tracks, analysis?.suggestedMusic);
+      if (selectedTrack) {
+        musicPath = selectedTrack.filePath;
+      }
+    }
+
+    if (!musicPath) {
+      throw new Error('已启用自动配乐，但音乐库为空。请先在音乐库中添加音频文件');
+    }
+
+    await fs.access(musicPath);
+    const outputPath = path.join(settings.outputPath, 'temp', `music_${Date.now()}.mp4`);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+
+    const escapedVideo = videoPath.replace(/"/g, '\\"');
+    const escapedMusic = musicPath.replace(/"/g, '\\"');
+    const escapedOutput = outputPath.replace(/"/g, '\\"');
+
+    const { stdout: streamInfo } = await execFileAsync('ffprobe', [
+      '-v',
+      'quiet',
+      '-print_format',
+      'json',
+      '-show_streams',
+      videoPath,
+    ]);
+    const hasAudio = JSON.parse(streamInfo).streams?.some((s) => s.codec_type === 'audio');
+
+    if (hasAudio) {
+      await execAsync(
+        `ffmpeg -y -i "${escapedVideo}" -stream_loop -1 -i "${escapedMusic}" ` +
+        `-filter_complex "[1:a]volume=0.18[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest "${escapedOutput}"`
+      );
+    } else {
+      await execAsync(
+        `ffmpeg -y -i "${escapedVideo}" -stream_loop -1 -i "${escapedMusic}" ` +
+        `-map 0:v -map 1:a -c:v copy -c:a aac -shortest "${escapedOutput}"`
+      );
+    }
+
+    return outputPath;
   }
 
   async exportVideo(videoPath, settings) {

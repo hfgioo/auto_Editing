@@ -109,17 +109,9 @@ const SubtitlePage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">字幕管理</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          查看和编辑 AI 自动生成的字幕
-        </p>
-      </div>
-
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* 左侧视频列表 */}
-        <div className="col-span-3">
+        <div className="xl:col-span-3">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
               <h3 className="text-sm font-semibold text-gray-900">视频列表</h3>
@@ -168,7 +160,7 @@ const SubtitlePage: React.FC = () => {
         </div>
 
         {/* 右侧字幕编辑器 */}
-        <div className="col-span-9">
+        <div className="xl:col-span-9">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {selectedSubtitle ? (
               <>

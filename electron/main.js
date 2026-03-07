@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const VideoProcessor = require('./VideoProcessor');
@@ -10,11 +10,13 @@ const videoProcessor = new VideoProcessor();
 const cloudUploader = new CloudUploader();
 
 function createWindow() {
+  Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1200,
     minHeight: 700,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -233,6 +235,7 @@ function getDefaultSettings() {
     customApiKey: '',
     customBaseURL: '',
     customModelId: '',
+    transcriptionModelId: 'whisper-1',
     outputPath: path.join(app.getPath('videos'), 'AI_Edited'),
     videoQuality: 'high',
     autoSubtitle: true,

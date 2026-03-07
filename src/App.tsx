@@ -5,8 +5,6 @@ import {
   DocumentTextIcon,
   MusicalNoteIcon,
   ChartBarIcon,
-  Bars3Icon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import UploadPage from './pages/UploadPage';
 import ProcessPage from './pages/ProcessPage';
@@ -22,7 +20,6 @@ function isElectron(): boolean {
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('upload');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const navItems = [
     { id: 'upload' as PageType, label: '上传视频', icon: CloudArrowUpIcon },
@@ -33,41 +30,13 @@ function App() {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* 侧边栏 */}
-      <aside
-        className={`
-          bg-white border-r border-gray-200 flex flex-col transition-all duration-300
-          ${sidebarCollapsed ? 'w-20' : 'w-64'}
-        `}
-      >
-        {/* Logo 区域 */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
-          {!sidebarCollapsed && (
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-sm">
-                <CloudArrowUpIcon className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">AI 视频编辑</h1>
-                <p className="text-xs text-gray-500">智能剪辑</p>
-              </div>
-            </div>
-          )}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            {sidebarCollapsed ? (
-              <Bars3Icon className="w-5 h-5 text-gray-600" />
-            ) : (
-              <XMarkIcon className="w-5 h-5 text-gray-600" />
-            )}
-          </button>
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+      <aside className="w-20 md:w-24 border-r border-slate-800 bg-slate-900/95 backdrop-blur flex flex-col items-center py-6">
+        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg shadow-orange-900/40">
+          <CloudArrowUpIcon className="w-6 h-6 text-white" />
         </div>
 
-        {/* 导航菜单 */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="mt-8 flex-1 w-full px-2 space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.id;
@@ -77,36 +46,24 @@ function App() {
                 key={item.id}
                 onClick={() => setCurrentPage(item.id)}
                 className={`
-                  w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all
+                  w-full flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all text-xs
                   ${isActive
-                    ? 'bg-orange-50 text-orange-600'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                   }
-                  ${sidebarCollapsed ? 'justify-center' : ''}
                 `}
-                title={sidebarCollapsed ? item.label : undefined}
+                title={item.label}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
-                {!sidebarCollapsed && <span className="text-sm">{item.label}</span>}
+                <span className="hidden md:block">{item.label}</span>
               </button>
             );
           })}
         </nav>
-
-        {/* 底部信息 */}
-        {!sidebarCollapsed && (
-          <div className="p-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500 text-center">
-              <p>版本 1.0.0</p>
-              <p className="mt-1">© 2024 AI Video Editor</p>
-            </div>
-          </div>
-        )}
       </aside>
 
-      {/* 主内容区 */}
-      <main className={`flex-1 overflow-auto ${!isElectron() ? 'pt-10' : ''}`}>
-        <div className="p-8">
+      <main className={`flex-1 overflow-auto ${!isElectron() ? 'pt-6' : ''}`}>
+        <div className="min-h-full p-4 md:p-8 bg-[radial-gradient(circle_at_10%_20%,rgba(251,146,60,0.12),transparent_35%),radial-gradient(circle_at_90%_80%,rgba(244,63,94,0.1),transparent_35%)]">
           {currentPage === 'upload' && <UploadPage />}
           {currentPage === 'process' && <ProcessPage />}
           {currentPage === 'subtitle' && <SubtitlePage />}

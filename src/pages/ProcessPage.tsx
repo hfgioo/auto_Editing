@@ -93,14 +93,7 @@ const ProcessPage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">处理进度</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            查看视频处理状态和进度
-          </p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={loadTasks}
           className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"

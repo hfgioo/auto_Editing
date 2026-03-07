@@ -38,6 +38,7 @@ export interface AppSettings {
   customApiKey: string;
   customBaseURL: string;
   customModelId: string;
+  transcriptionModelId?: string;
   outputPath: string;
   videoQuality: 'low' | 'medium' | 'high';
   autoSubtitle: boolean;

@@ -154,14 +154,6 @@ const UploadPage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">上传视频</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          上传视频文件，AI 将自动分析并生成精彩片段
-        </p>
-      </div>
-
       {/* 上传区域 */}
       <div
         onDragOver={handleDragOver}
