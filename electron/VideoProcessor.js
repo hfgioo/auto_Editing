@@ -74,20 +74,21 @@ class VideoProcessor {
       console.log('[VideoProcessor] 剪辑完成:', editedPath);
       await this.updateStep(taskId, 'edit', 'completed', onProgress);
 
-      // 步骤 4: 生成字幕
+      // 步骤 4: 生成字幕并烧录
       let subtitles = [];
+      let finalPath = editedPath;
       if (settings.autoSubtitle) {
         await this.updateStep(taskId, 'subtitle', 'processing', onProgress);
         subtitles = await this.generateSubtitles(editedPath, analysis, settings);
+        finalPath = await this.burnSubtitles(editedPath, subtitles, settings);
         console.log('[VideoProcessor] 字幕生成完成:', subtitles.length, '条');
         await this.updateStep(taskId, 'subtitle', 'completed', onProgress);
       }
 
       // 步骤 5: 添加背景音乐
-      let finalPath = editedPath;
       if (settings.autoMusic) {
         await this.updateStep(taskId, 'music', 'processing', onProgress);
-        finalPath = await this.addMusic(editedPath, analysis, settings);
+        finalPath = await this.addMusic(finalPath, analysis, settings);
         console.log('[VideoProcessor] 音乐添加完成:', finalPath);
         await this.updateStep(taskId, 'music', 'completed', onProgress);
       }
@@ -422,6 +423,55 @@ class VideoProcessor {
     await fs.unlink(audioPath).catch(() => {});
     
     return subtitles;
+  }
+
+  buildSRTContent(subtitles) {
+    return subtitles
+      .map((seg) => `${seg.index}\n${seg.startTime} --> ${seg.endTime}\n${seg.text}\n`)
+      .join('\n');
+  }
+
+  escapePathForSubtitlesFilter(filePath) {
+    return filePath
+      .replace(/\\/g, '/')
+      .replace(/:/g, '\\:')
+      .replace(/'/g, "\\'")
+      .replace(/,/g, '\\,')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]');
+  }
+
+  async burnSubtitles(videoPath, subtitles, settings) {
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+      throw new Error('字幕列表为空，无法烧录字幕');
+    }
+
+    const tempDir = path.join(settings.outputPath, 'temp');
+    await fs.mkdir(tempDir, { recursive: true });
+
+    const srtPath = path.join(tempDir, `subtitle_${Date.now()}.srt`);
+    const outputPath = path.join(tempDir, `subtitled_${Date.now()}.mp4`);
+    const escapedSrtPath = this.escapePathForSubtitlesFilter(srtPath);
+
+    try {
+      await fs.writeFile(srtPath, this.buildSRTContent(subtitles), 'utf8');
+      await execFileAsync(this.ffmpegPath, [
+        '-y',
+        '-i', videoPath,
+        '-vf', `subtitles='${escapedSrtPath}'`,
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '20',
+        '-c:a', 'copy',
+        outputPath,
+      ]);
+      return outputPath;
+    } catch (error) {
+      console.error('[VideoProcessor] 字幕烧录失败:', error);
+      throw new Error(`字幕烧录失败: ${error?.message || '未知错误'}`);
+    } finally {
+      await fs.unlink(srtPath).catch(() => {});
+    }
   }
 
   async callAIForSubtitles(audioPath, analysis, settings) {
