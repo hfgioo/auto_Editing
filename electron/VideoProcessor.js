@@ -942,7 +942,7 @@ class VideoProcessor {
 
   resolveAnalysisConfig(settings) {
     if (settings.analysisApiKey && settings.analysisBaseURL && settings.analysisModelId) {
-      const base = String(settings.analysisBaseURL).replace(/\/$/, '');
+      const base = this.normalizeOpenAIBaseURL(settings.analysisBaseURL);
       return {
         provider: 'openai_compatible',
         apiUrl: `${base}/chat/completions`,
@@ -979,7 +979,7 @@ class VideoProcessor {
 
   resolveTranscriptionConfig(settings) {
     if (settings.transcriptionApiKey && settings.transcriptionBaseURL) {
-      const base = String(settings.transcriptionBaseURL).replace(/\/$/, '');
+      const base = this.normalizeOpenAIBaseURL(settings.transcriptionBaseURL);
       return {
         apiKey: settings.transcriptionApiKey,
         baseURL: base,
@@ -1004,7 +1004,7 @@ class VideoProcessor {
       if (!settings.openaiApiKey || !settings.openaiBaseURL || !settings.openaiModelId) return null;
       return {
         apiKey: settings.openaiApiKey,
-        baseURL: String(settings.openaiBaseURL).replace(/\/$/, ''),
+        baseURL: this.normalizeOpenAIBaseURL(settings.openaiBaseURL),
         modelId: settings.openaiModelId,
       };
     }
@@ -1013,7 +1013,7 @@ class VideoProcessor {
       if (!settings.customApiKey || !settings.customBaseURL || !settings.customModelId) return null;
       return {
         apiKey: settings.customApiKey,
-        baseURL: String(settings.customBaseURL).replace(/\/$/, ''),
+        baseURL: this.normalizeOpenAIBaseURL(settings.customBaseURL),
         modelId: settings.customModelId,
       };
     }
@@ -1021,7 +1021,7 @@ class VideoProcessor {
     if (settings.customApiKey && settings.customBaseURL && settings.customModelId) {
       return {
         apiKey: settings.customApiKey,
-        baseURL: String(settings.customBaseURL).replace(/\/$/, ''),
+        baseURL: this.normalizeOpenAIBaseURL(settings.customBaseURL),
         modelId: settings.customModelId,
       };
     }
@@ -1029,12 +1029,18 @@ class VideoProcessor {
     if (settings.openaiApiKey && settings.openaiBaseURL && settings.openaiModelId) {
       return {
         apiKey: settings.openaiApiKey,
-        baseURL: String(settings.openaiBaseURL).replace(/\/$/, ''),
+        baseURL: this.normalizeOpenAIBaseURL(settings.openaiBaseURL),
         modelId: settings.openaiModelId,
       };
     }
 
     return null;
+  }
+
+  normalizeOpenAIBaseURL(baseURL) {
+    const base = String(baseURL || '').replace(/\/$/, '');
+    if (!base) return base;
+    return /\/v\d+$/i.test(base) ? base : `${base}/v1`;
   }
 
   formatSRTTime(seconds) {

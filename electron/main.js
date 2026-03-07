@@ -79,7 +79,7 @@ ipcMain.handle('test-ai-connection', async (_event, settings) => {
     }
 
     if (settings.analysisApiKey && settings.analysisBaseURL && settings.analysisModelId) {
-      const base = String(settings.analysisBaseURL).replace(/\/$/, '');
+      const base = normalizeOpenAIBaseURL(settings.analysisBaseURL);
       const resp = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -127,8 +127,8 @@ ipcMain.handle('test-ai-connection', async (_event, settings) => {
       const useOpenAI = settings.aiProvider === 'openai' || (settings.aiProvider === 'compatible' && settings.openaiApiKey);
       const apiKey = useOpenAI ? settings.openaiApiKey : settings.customApiKey;
       const baseURL = useOpenAI
-        ? (settings.openaiBaseURL || 'https://api.openai.com/v1')
-        : settings.customBaseURL;
+        ? normalizeOpenAIBaseURL(settings.openaiBaseURL || 'https://api.openai.com/v1')
+        : normalizeOpenAIBaseURL(settings.customBaseURL);
       const model = useOpenAI
         ? (settings.openaiModelId || 'gpt-4o-mini')
         : settings.customModelId;
@@ -384,6 +384,12 @@ function getDefaultSettings() {
     cosBucket: '',
     cosRegion: '',
   };
+}
+
+function normalizeOpenAIBaseURL(baseURL) {
+  const base = String(baseURL || '').replace(/\/$/, '');
+  if (!base) return base;
+  return /\/v\d+$/i.test(base) ? base : `${base}/v1`;
 }
 
 // ========== 云上传相关 ==========
