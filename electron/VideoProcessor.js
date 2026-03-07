@@ -302,10 +302,12 @@ class VideoProcessor {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Authorization': `Bearer ${analysisConfig.apiKey}`,
         },
         body: JSON.stringify({
           model: analysisConfig.model,
+          stream: false,
           messages: [{
             role: 'user',
             content: [
@@ -326,7 +328,7 @@ class VideoProcessor {
       throw new Error(`AI API 调用失败: ${response.status} ${error}`);
     }
 
-    const data = await response.json();
+    const data = await this.parseJSONOrSSEBody(response);
     
     let analysisText;
     if (analysisConfig.provider === 'gemini') {
@@ -340,6 +342,83 @@ class VideoProcessor {
     }
 
     return JSON.parse(analysisText);
+  }
+
+  async parseJSONOrSSEBody(response) {
+    const rawText = await response.text();
+    if (!rawText) {
+      throw new Error('AI 返回空响应');
+    }
+
+    try {
+      return JSON.parse(rawText);
+    } catch (_jsonError) {
+      // 兼容某些 OpenAI 兼容网关返回 text/event-stream: data: {...}
+      const lines = rawText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('data:'));
+
+      if (lines.length === 0) {
+        const extracted = this.extractJSONObject(rawText);
+        if (extracted) return extracted;
+        throw new Error(`AI 返回非 JSON 内容: ${rawText.slice(0, 200)}`);
+      }
+
+      let fullContent = '';
+      let lastPayload = null;
+      for (const line of lines) {
+        const payload = line.replace(/^data:\s*/, '');
+        if (!payload || payload === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(payload);
+          lastPayload = parsed;
+          const deltaContent = parsed?.choices?.[0]?.delta?.content;
+          const messageContent = parsed?.choices?.[0]?.message?.content;
+          if (typeof deltaContent === 'string') fullContent += deltaContent;
+          if (typeof messageContent === 'string') fullContent = messageContent;
+        } catch (_lineError) {
+          // 忽略单行解析失败，继续尝试其它 data 行
+        }
+      }
+
+      if (fullContent) {
+        const maybeJSON = this.extractJSONObject(fullContent);
+        if (maybeJSON) {
+          return {
+            choices: [{ message: { content: JSON.stringify(maybeJSON) } }],
+          };
+        }
+        return {
+          choices: [{ message: { content: fullContent } }],
+        };
+      }
+
+      if (lastPayload) {
+        return lastPayload;
+      }
+
+      throw new Error(`无法解析 AI 流式响应: ${rawText.slice(0, 200)}`);
+    }
+  }
+
+  extractJSONObject(text) {
+    if (!text || typeof text !== 'string') return null;
+
+    const fenced = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/```\s*([\s\S]*?)```/i);
+    const candidate = fenced ? fenced[1] : text;
+
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+
+    const jsonText = candidate.slice(start, end + 1);
+    try {
+      return JSON.parse(jsonText);
+    } catch (_e) {
+      return null;
+    }
   }
 
   async editVideo(videoPath, analysis, settings) {
