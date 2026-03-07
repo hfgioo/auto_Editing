@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   DocumentTextIcon,
   ArrowDownTrayIcon,
   PencilIcon,
@@ -33,7 +33,7 @@ const SubtitlePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    loadSubtitles();
+    void loadSubtitles();
   }, []);
 
   const loadSubtitles = async () => {
@@ -54,28 +54,19 @@ const SubtitlePage: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (selectedSubtitle && editingIndex !== null) {
-      try {
-        await api.updateSubtitleSegment(
-          selectedSubtitle.id,
-          editingIndex,
-          editText
-        );
-        
-        const updatedSegments = selectedSubtitle.segments.map((seg) =>
-          seg.index === editingIndex ? { ...seg, text: editText } : seg
-        );
-        
-        const updatedSubtitle = { ...selectedSubtitle, segments: updatedSegments };
-        setSubtitles(subtitles.map(s => 
-          s.id === selectedSubtitle.id ? updatedSubtitle : s
-        ));
-        setSelectedSubtitle(updatedSubtitle);
-        setEditingIndex(null);
-      } catch (error) {
-        console.error('[SubtitlePage] 保存失败:', error);
-        alert('保存失败');
-      }
+    if (!selectedSubtitle || editingIndex === null) return;
+    try {
+      await api.updateSubtitleSegment(selectedSubtitle.id, editingIndex, editText);
+      const updatedSegments = selectedSubtitle.segments.map((seg) =>
+        seg.index === editingIndex ? { ...seg, text: editText } : seg
+      );
+      const updatedSubtitle = { ...selectedSubtitle, segments: updatedSegments };
+      setSubtitles((prev) => prev.map((s) => (s.id === selectedSubtitle.id ? updatedSubtitle : s)));
+      setSelectedSubtitle(updatedSubtitle);
+      setEditingIndex(null);
+    } catch (error) {
+      console.error('[SubtitlePage] 保存失败:', error);
+      alert('保存失败');
     }
   };
 
@@ -103,29 +94,24 @@ const SubtitlePage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const filteredSegments = selectedSubtitle?.segments.filter(seg =>
-    seg.text.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredSegments =
+    selectedSubtitle?.segments.filter((seg) => seg.text.toLowerCase().includes(searchQuery.toLowerCase())) || [];
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* 左侧视频列表 */}
-        <div className="xl:col-span-3">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900">视频列表</h3>
-              <p className="text-xs text-gray-600 mt-0.5">
-                {subtitles.length} 个视频
-              </p>
+    <div className="mx-auto max-w-7xl">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <aside className="xl:col-span-3">
+          <div className="overflow-hidden rounded-3xl border border-[var(--line)] bg-white/85">
+            <div className="border-b border-[var(--line)] px-4 py-3">
+              <p className="text-sm font-semibold text-[var(--ink)]">字幕任务</p>
+              <p className="text-xs text-[var(--muted)]">共 {subtitles.length} 个视频</p>
             </div>
-            
-            <div className="p-3 space-y-2 max-h-[calc(100vh-16rem)] overflow-y-auto">
+
+            <div className="max-h-[calc(100vh-17rem)] space-y-2 overflow-y-auto p-3">
               {subtitles.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-xs">暂无字幕</p>
-                  <p className="text-xs mt-1">处理视频后自动生成</p>
+                <div className="py-12 text-center text-[var(--muted)]">
+                  <DocumentTextIcon className="mx-auto mb-2 h-10 w-10" />
+                  <p className="text-xs">暂无字幕数据</p>
                 </div>
               ) : (
                 subtitles.map((subtitle) => (
@@ -135,146 +121,108 @@ const SubtitlePage: React.FC = () => {
                       setSelectedSubtitle(subtitle);
                       setEditingIndex(null);
                     }}
-                    className={`
-                      w-full p-3 rounded-lg border text-left transition-all
-                      ${selectedSubtitle?.id === subtitle.id
-                        ? 'border-orange-500 bg-orange-50'
-                        : 'border-gray-200 hover:border-orange-300 hover:bg-gray-50'
-                      }
-                    `}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                      selectedSubtitle?.id === subtitle.id
+                        ? 'border-[rgba(225,107,66,0.5)] bg-[rgba(225,107,66,0.12)]'
+                        : 'border-[var(--line)] bg-white/70 hover:bg-white'
+                    }`}
                   >
-                    <p className="font-medium text-sm text-gray-900 truncate mb-1">
-                      {subtitle.videoName}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
-                      <span className="px-2 py-0.5 bg-white rounded-full border border-gray-200">
-                        {subtitle.language}
-                      </span>
-                      <span>{subtitle.segments.length} 条</span>
-                    </div>
+                    <p className="truncate text-sm font-semibold text-[var(--ink)]">{subtitle.videoName}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{subtitle.segments.length} 条 · {subtitle.language}</p>
                   </button>
                 ))
               )}
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* 右侧字幕编辑器 */}
-        <div className="xl:col-span-9">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <section className="xl:col-span-9">
+          <div className="overflow-hidden rounded-3xl border border-[var(--line)] bg-white/85">
             {selectedSubtitle ? (
               <>
-                {/* 编辑器头部 */}
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      {selectedSubtitle.videoName}
-                    </h3>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {selectedSubtitle.segments.length} 条字幕 · AI 自动生成
-                    </p>
+                <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--ink)]">{selectedSubtitle.videoName}</p>
+                    <p className="text-xs text-[var(--muted)]">{selectedSubtitle.segments.length} 条字幕</p>
                   </div>
-                  
                   <button
                     onClick={exportSRT}
-                    className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95"
                   >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    <ArrowDownTrayIcon className="h-4 w-4" />
                     导出 SRT
                   </button>
                 </div>
 
-                {/* 搜索栏 */}
-                <div className="px-6 py-3 border-b border-gray-200">
+                <div className="border-b border-[var(--line)] px-5 py-3">
                   <div className="relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="搜索字幕内容..."
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                      className="w-full rounded-xl border border-[var(--line)] bg-white px-9 py-2 text-sm outline-none ring-0 transition focus:border-[rgba(225,107,66,0.6)]"
                     />
                   </div>
                 </div>
 
-                {/* 字幕列表 */}
-                <div className="p-6 max-h-[calc(100vh-20rem)] overflow-y-auto">
-                  <div className="space-y-3 max-w-4xl">
-                    {filteredSegments.map((segment) => (
-                      <div
-                        key={segment.index}
-                        className="p-4 border border-gray-200 rounded-lg hover:border-orange-300 transition-colors bg-white"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3 text-xs text-gray-600">
-                            <span className="inline-flex items-center justify-center w-7 h-7 bg-gray-100 rounded-full font-mono font-semibold">
-                              {segment.index}
-                            </span>
-                            <div className="flex items-center gap-2 font-mono">
-                              <span className="px-2 py-1 bg-gray-100 rounded">{segment.startTime}</span>
-                              <span>→</span>
-                              <span className="px-2 py-1 bg-gray-100 rounded">{segment.endTime}</span>
-                            </div>
-                          </div>
-                          
-                          {editingIndex === segment.index ? (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={handleSave}
-                                className="p-1.5 hover:bg-green-50 rounded-lg transition-colors"
-                                title="保存"
-                              >
-                                <CheckIcon className="w-5 h-5 text-green-600" />
-                              </button>
-                              <button
-                                onClick={handleCancel}
-                                className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                                title="取消"
-                              >
-                                <XMarkIcon className="w-5 h-5 text-red-600" />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleEdit(segment.index, segment.text)}
-                              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="编辑"
-                            >
-                              <PencilIcon className="w-5 h-5 text-gray-600" />
-                            </button>
-                          )}
+                <div className="max-h-[calc(100vh-21rem)] space-y-3 overflow-y-auto p-5">
+                  {filteredSegments.map((segment) => (
+                    <article key={segment.index} className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-3">
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                          <span className="rounded-md bg-[var(--panel-2)] px-2 py-0.5 font-mono">#{segment.index}</span>
+                          <span className="font-mono">{segment.startTime}</span>
+                          <span>→</span>
+                          <span className="font-mono">{segment.endTime}</span>
                         </div>
 
                         {editingIndex === segment.index ? (
-                          <textarea
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            className="w-full p-3 border-2 border-orange-500 rounded-lg text-gray-900 resize-none focus:outline-none text-sm"
-                            rows={2}
-                            autoFocus
-                          />
+                          <div className="flex items-center gap-1">
+                            <button onClick={handleSave} className="rounded-md p-1 text-emerald-600 hover:bg-emerald-50" title="保存">
+                              <CheckIcon className="h-5 w-5" />
+                            </button>
+                            <button onClick={handleCancel} className="rounded-md p-1 text-red-600 hover:bg-red-50" title="取消">
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                          </div>
                         ) : (
-                          <p className="text-gray-900 leading-relaxed pl-10 text-sm">
-                            {segment.text}
-                          </p>
+                          <button
+                            onClick={() => handleEdit(segment.index, segment.text)}
+                            className="rounded-md p-1 text-[var(--muted)] hover:bg-[var(--panel-2)]"
+                            title="编辑"
+                          >
+                            <PencilIcon className="h-5 w-5" />
+                          </button>
                         )}
                       </div>
-                    ))}
-                  </div>
+
+                      {editingIndex === segment.index ? (
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          className="w-full resize-none rounded-xl border border-[rgba(225,107,66,0.6)] bg-white p-2 text-sm text-[var(--ink)] outline-none"
+                          rows={3}
+                          autoFocus
+                        />
+                      ) : (
+                        <p className="text-sm leading-relaxed text-[var(--ink-soft)]">{segment.text}</p>
+                      )}
+                    </article>
+                  ))}
                 </div>
               </>
             ) : (
-              <div className="flex items-center justify-center h-96 text-gray-400">
-                <div className="text-center">
-                  <DocumentTextIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p className="text-base mb-2">选择一个视频查看字幕</p>
-                  <p className="text-sm">字幕由 AI 在视频处理时自动生成</p>
+              <div className="flex h-80 items-center justify-center text-center text-[var(--muted)]">
+                <div>
+                  <DocumentTextIcon className="mx-auto mb-2 h-10 w-10" />
+                  <p className="text-sm">选择一个视频开始编辑字幕</p>
                 </div>
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

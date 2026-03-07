@@ -2,17 +2,35 @@ const { ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
-const { exec, execFile } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 const db = require('./database');
 
 class VideoProcessor {
   constructor() {
     this.processingTasks = new Map();
+    this.ffmpegPath = this.resolveBinaryPath(ffmpegInstaller?.path, 'ffmpeg');
+    this.ffprobePath = this.resolveBinaryPath(ffprobeInstaller?.path, 'ffprobe');
+  }
+
+  async delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  resolveBinaryPath(installerPath, fallbackCommand) {
+    try {
+      if (installerPath && fsSync.existsSync(installerPath)) {
+        return installerPath;
+      }
+    } catch (_error) {
+      // ignore and use fallback
+    }
+    return fallbackCommand;
   }
 
   async processVideo(videoPath, settings, onProgress) {
@@ -89,6 +107,11 @@ class VideoProcessor {
 
     } catch (error) {
       console.error('[VideoProcessor] 处理失败:', error);
+      for (const [stepName, step] of Object.entries(task.steps)) {
+        if (step.status === 'processing') {
+          await this.updateStep(taskId, stepName, 'failed', onProgress);
+        }
+      }
       task.status = 'failed';
       task.error = error.message;
       onProgress(task);
@@ -102,7 +125,7 @@ class VideoProcessor {
 
     task.steps[stepName].status = status;
     
-    if (status === 'completed' || status === 'skipped') {
+    if (status === 'completed' || status === 'skipped' || status === 'failed') {
       task.steps[stepName].progress = 100;
     } else if (status === 'processing') {
       task.steps[stepName].progress = 50;
@@ -119,7 +142,7 @@ class VideoProcessor {
   async extractVideoInfo(videoPath) {
     try {
       await fs.access(videoPath);
-      const { stdout } = await execFileAsync('ffprobe', [
+      const { stdout } = await execFileAsync(this.ffprobePath, [
         '-v',
         'quiet',
         '-print_format',
@@ -145,7 +168,7 @@ class VideoProcessor {
     } catch (error) {
       console.error('[VideoProcessor] 提取视频信息失败:', error);
       if (error?.code === 'ENOENT') {
-        throw new Error('未找到 ffprobe。请先安装 FFmpeg，并确保 ffprobe 已加入系统 PATH');
+        throw new Error('未找到 ffprobe 可执行文件。请确认应用内置 FFmpeg 资源完整，或在系统中安装 FFmpeg 并加入 PATH');
       }
       if (error?.message?.includes('No such file') || error?.message?.includes('ENOENT')) {
         throw new Error('视频文件不存在或路径不可访问，请检查文件是否被移动/删除');
@@ -173,9 +196,14 @@ class VideoProcessor {
       const timestamp = i * frameInterval;
       const framePath = path.join(framesDir, `frame_${i}.jpg`);
       
-      await execAsync(
-        `ffmpeg -ss ${timestamp} -i "${videoPath}" -vframes 1 -q:v 2 "${framePath}" -y`
-      );
+      await execFileAsync(this.ffmpegPath, [
+        '-ss', String(timestamp),
+        '-i', videoPath,
+        '-vframes', '1',
+        '-q:v', '2',
+        framePath,
+        '-y',
+      ]);
       
       frames.push({
         timestamp,
@@ -183,13 +211,34 @@ class VideoProcessor {
       });
     }
 
-    // 调用 AI API 分析
-    const analysis = await this.callAIAPI(frames, videoInfo, settings);
-    
-    // 清理临时文件
-    await fs.rm(framesDir, { recursive: true, force: true });
-    
-    return analysis;
+    try {
+      // 调用 AI API 分析（带重试）
+      return await this.callAIAPIWithRetry(frames, videoInfo, settings);
+    } finally {
+      // 清理临时文件
+      await fs.rm(framesDir, { recursive: true, force: true });
+    }
+  }
+
+  async callAIAPIWithRetry(frames, videoInfo, settings) {
+    const maxAttempts = Number(settings.aiRetryAttempts) > 0 ? Number(settings.aiRetryAttempts) : 3;
+    const baseDelayMs = Number(settings.aiRetryBaseDelayMs) > 0 ? Number(settings.aiRetryBaseDelayMs) : 1000;
+
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.callAIAPI(frames, videoInfo, settings);
+      } catch (error) {
+        lastError = error;
+        const isLastAttempt = attempt === maxAttempts;
+        console.warn(`[VideoProcessor] AI 分析第 ${attempt}/${maxAttempts} 次尝试失败:`, error?.message || error);
+        if (isLastAttempt) break;
+        const delayMs = baseDelayMs * (2 ** (attempt - 1));
+        await this.delay(delayMs);
+      }
+    }
+
+    throw new Error(`AI 分析失败（已重试 ${maxAttempts} 次）: ${lastError?.message || '未知错误'}`);
   }
 
   async callAIAPI(frames, videoInfo, settings) {
@@ -239,87 +288,71 @@ class VideoProcessor {
   }
 }`;
 
-    try {
-      let response;
-      
-      if (settings.aiProvider === 'gemini') {
-        // Gemini API 格式
-        response = await fetch(`${apiUrl}?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                ...frameData.map(f => ({
-                  inline_data: {
-                    mime_type: 'image/jpeg',
-                    data: f.base64,
-                  }
-                }))
-              ]
-            }]
-          }),
-        });
-      } else {
-        // OpenAI / 自定义 API 格式
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                ...frameData.map(f => ({
-                  type: 'image_url',
-                  image_url: { url: `data:image/jpeg;base64,${f.base64}` }
-                }))
-              ]
-            }],
-            response_format: { type: 'json_object' },
-          }),
-        });
-      }
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`AI API 调用失败: ${response.status} ${error}`);
-      }
-
-      const data = await response.json();
-      
-      let analysisText;
-      if (settings.aiProvider === 'gemini') {
-        analysisText = data.candidates[0].content.parts[0].text;
-      } else {
-        analysisText = data.choices[0].message.content;
-      }
-
-      return JSON.parse(analysisText);
-      
-    } catch (error) {
-      console.error('[VideoProcessor] AI 分析失败:', error);
-      // 返回默认分析结果
-      return {
-        highlights: [{
-          startTime: 0,
-          endTime: Math.min(30, videoInfo.duration),
-          reason: 'AI 分析失败，使用默认片段',
-          score: 0.5,
-        }],
-        summary: '无法生成摘要',
-        suggestedMusic: {
-          genre: '轻快',
-          mood: '中性',
-          tempo: '中速',
+    let response;
+    
+    if (settings.aiProvider === 'gemini') {
+      // Gemini API 格式
+      response = await fetch(`${apiUrl}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              ...frameData.map(f => ({
+                inline_data: {
+                  mime_type: 'image/jpeg',
+                  data: f.base64,
+                }
+              }))
+            ]
+          }]
+        }),
+      });
+    } else {
+      // OpenAI / 自定义 API 格式
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
-      };
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              ...frameData.map(f => ({
+                type: 'image_url',
+                image_url: { url: `data:image/jpeg;base64,${f.base64}` }
+              }))
+            ]
+          }],
+          response_format: { type: 'json_object' },
+        }),
+      });
     }
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`AI API 调用失败: ${response.status} ${error}`);
+    }
+
+    const data = await response.json();
+    
+    let analysisText;
+    if (settings.aiProvider === 'gemini') {
+      analysisText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    } else {
+      analysisText = data?.choices?.[0]?.message?.content;
+    }
+
+    if (!analysisText || typeof analysisText !== 'string') {
+      throw new Error('AI 返回内容为空或格式不正确');
+    }
+
+    return JSON.parse(analysisText);
   }
 
   async editVideo(videoPath, analysis, settings) {
@@ -346,9 +379,19 @@ class VideoProcessor {
     const filterComplex = `${segments};${concatVideo}concat=n=${analysis.highlights.length}:v=1:a=0[outv];${concatAudio}concat=n=${analysis.highlights.length}:v=0:a=1[outa]`;
 
     try {
-      await execAsync(
-        `ffmpeg -i "${videoPath}" -filter_complex "${filterComplex}" -map "[outv]" -map "[outa]" -c:v libx264 -preset ${settings.videoQuality === 'high' ? 'slow' : 'fast'} -crf ${settings.videoQuality === 'high' ? '18' : '23'} -c:a aac -b:a 192k "${outputPath}" -y`
-      );
+      await execFileAsync(this.ffmpegPath, [
+        '-i', videoPath,
+        '-filter_complex', filterComplex,
+        '-map', '[outv]',
+        '-map', '[outa]',
+        '-c:v', 'libx264',
+        '-preset', settings.videoQuality === 'high' ? 'slow' : 'fast',
+        '-crf', settings.videoQuality === 'high' ? '18' : '23',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        outputPath,
+        '-y',
+      ]);
       
       return outputPath;
     } catch (error) {
@@ -362,7 +405,15 @@ class VideoProcessor {
   async generateSubtitles(videoPath, analysis, settings) {
     // 提取音频
     const audioPath = path.join(settings.outputPath, 'temp', `audio_${Date.now()}.wav`);
-    await execAsync(`ffmpeg -i "${videoPath}" -vn -acodec pcm_s16le -ar 16000 -ac 1 "${audioPath}" -y`);
+    await execFileAsync(this.ffmpegPath, [
+      '-i', videoPath,
+      '-vn',
+      '-acodec', 'pcm_s16le',
+      '-ar', '16000',
+      '-ac', '1',
+      audioPath,
+      '-y',
+    ]);
 
     // 调用 AI 生成字幕
     const subtitles = await this.callAIForSubtitles(audioPath, analysis, settings);
@@ -454,11 +505,7 @@ class VideoProcessor {
     const outputPath = path.join(settings.outputPath, 'temp', `music_${Date.now()}.mp4`);
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
-    const escapedVideo = videoPath.replace(/"/g, '\\"');
-    const escapedMusic = musicPath.replace(/"/g, '\\"');
-    const escapedOutput = outputPath.replace(/"/g, '\\"');
-
-    const { stdout: streamInfo } = await execFileAsync('ffprobe', [
+    const { stdout: streamInfo } = await execFileAsync(this.ffprobePath, [
       '-v',
       'quiet',
       '-print_format',
@@ -469,16 +516,32 @@ class VideoProcessor {
     const hasAudio = JSON.parse(streamInfo).streams?.some((s) => s.codec_type === 'audio');
 
     if (hasAudio) {
-      await execAsync(
-        `ffmpeg -y -i "${escapedVideo}" -stream_loop -1 -i "${escapedMusic}" ` +
-        `-filter_complex "[1:a]volume=0.18[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
-        `-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest "${escapedOutput}"`
-      );
+      await execFileAsync(this.ffmpegPath, [
+        '-y',
+        '-i', videoPath,
+        '-stream_loop', '-1',
+        '-i', musicPath,
+        '-filter_complex', '[1:a]volume=0.18[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]',
+        '-map', '0:v',
+        '-map', '[aout]',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-shortest',
+        outputPath,
+      ]);
     } else {
-      await execAsync(
-        `ffmpeg -y -i "${escapedVideo}" -stream_loop -1 -i "${escapedMusic}" ` +
-        `-map 0:v -map 1:a -c:v copy -c:a aac -shortest "${escapedOutput}"`
-      );
+      await execFileAsync(this.ffmpegPath, [
+        '-y',
+        '-i', videoPath,
+        '-stream_loop', '-1',
+        '-i', musicPath,
+        '-map', '0:v',
+        '-map', '1:a',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-shortest',
+        outputPath,
+      ]);
     }
 
     return outputPath;

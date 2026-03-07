@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  CloudArrowUpIcon, 
+import {
+  CloudArrowUpIcon,
   XMarkIcon,
   PlayIcon,
   VideoCameraIcon,
@@ -17,14 +17,13 @@ const UploadPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 监听视频处理进度
     api.onVideoProgress((task: ProcessTask) => {
-      setTasks(prev => {
-        const index = prev.findIndex(t => t.id === task.id);
+      setTasks((prev) => {
+        const index = prev.findIndex((t) => t.id === task.id);
         if (index >= 0) {
-          const newTasks = [...prev];
-          newTasks[index] = task;
-          return newTasks;
+          const next = [...prev];
+          next[index] = task;
+          return next;
         }
         return [...prev, task];
       });
@@ -47,32 +46,30 @@ const UploadPage: React.FC = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
     const droppedFiles = Array.from(e.dataTransfer.files);
     handleFiles(droppedFiles);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
-      handleFiles(selectedFiles);
+      handleFiles(Array.from(e.target.files));
     }
   };
 
   const handleFiles = (newFiles: File[]) => {
-    const videoFiles = newFiles.filter(file => file.type.startsWith('video/'));
-    setFiles([...files, ...videoFiles]);
+    const videoFiles = newFiles.filter((file) => file.type.startsWith('video/'));
+    setFiles((prev) => [...prev, ...videoFiles]);
   };
 
   const removeFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   };
 
   const handleStartProcessing = async () => {
@@ -81,13 +78,9 @@ const UploadPage: React.FC = () => {
       return;
     }
 
-    console.log('[UploadPage] 开始处理，文件数量:', files.length);
-    
     try {
       const settings = await api.loadSettings();
-      console.log('[UploadPage] 加载的设置:', settings);
-      
-      // 检查 API Key
+
       if (settings.aiProvider === 'gemini' && !settings.geminiApiKey) {
         alert('请先在设置中配置 Gemini API Key');
         return;
@@ -103,27 +96,18 @@ const UploadPage: React.FC = () => {
 
       setIsProcessing(true);
 
-      // 处理每个视频文件
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        console.log(`[UploadPage] 处理第 ${i + 1}/${files.length} 个文件:`, file.name);
-        
-        // 在 Electron 中使用 file.path
-        const filePath = (file as any).path;
+        const filePath = (files[i] as any).path;
         if (!filePath) {
           throw new Error('无法获取文件路径，请在 Electron 环境中运行');
         }
-        
-        const task = await api.processVideo(filePath, settings);
-        console.log('[UploadPage] 任务已创建:', task.id);
+        await api.processVideo(filePath, settings);
       }
-      
-      console.log('[UploadPage] 所有视频已提交处理');
+
       alert('✅ 所有视频处理完成！');
       setFiles([]);
     } catch (error) {
-      console.error('[UploadPage] 处理失败:', error);
-      alert('❌ 处理失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      alert(`❌ 处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -141,32 +125,18 @@ const UploadPage: React.FC = () => {
     return labels[stepName] || stepName;
   };
 
-  const getStepStatus = (status: string) => {
-    const statusMap: Record<string, { text: string; color: string }> = {
-      pending: { text: '等待中', color: 'text-gray-500' },
-      processing: { text: '处理中...', color: 'text-blue-600' },
-      completed: { text: '已完成', color: 'text-green-600' },
-      failed: { text: '失败', color: 'text-red-600' },
-      skipped: { text: '已跳过', color: 'text-gray-400' },
-    };
-    return statusMap[status] || statusMap.pending;
-  };
-
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* 上传区域 */}
-      <div
+    <div className="mx-auto max-w-6xl space-y-5">
+      <section
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`
-          relative border-2 border-dashed rounded-xl p-12 cursor-pointer transition-all
-          ${isDragging 
-            ? 'border-orange-500 bg-orange-50' 
-            : 'border-gray-300 bg-white hover:border-orange-400 hover:bg-gray-50'
-          }
-        `}
+        className={`group cursor-pointer rounded-3xl border-2 border-dashed p-10 text-center transition-all ${
+          isDragging
+            ? 'border-[var(--accent)] bg-[rgba(225,107,66,0.1)]'
+            : 'border-[var(--line)] bg-white/70 hover:border-[rgba(225,107,66,0.45)] hover:bg-white/90'
+        }`}
       >
         <input
           ref={fileInputRef}
@@ -176,136 +146,115 @@ const UploadPage: React.FC = () => {
           onChange={handleFileSelect}
           className="hidden"
         />
-        
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
-            <CloudArrowUpIcon className="w-8 h-8 text-orange-600" />
+
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,var(--accent),var(--accent-2))] text-white shadow-lg">
+          <CloudArrowUpIcon className="h-8 w-8" />
+        </div>
+
+        <h3 className="text-lg font-semibold text-[var(--ink)]">{isDragging ? '松开以上传文件' : '把视频拖拽到这里'}</h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">或者点击选择文件，支持批量上传</p>
+
+        <div className="mt-4 flex items-center justify-center gap-5 text-xs text-[var(--muted)]">
+          <div className="flex items-center gap-1.5">
+            <VideoCameraIcon className="h-4 w-4" />
+            <span>MP4 / MOV / AVI</span>
           </div>
-          
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            {isDragging ? '松开以上传文件' : '拖拽视频文件到这里'}
-          </h3>
-          
-          <p className="text-sm text-gray-600 mb-4">
-            或点击选择文件
-          </p>
-          
-          <div className="flex items-center justify-center gap-6 text-xs text-gray-500">
-            <div className="flex items-center gap-1">
-              <VideoCameraIcon className="w-4 h-4" />
-              <span>支持 MP4、MOV、AVI</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <DocumentIcon className="w-4 h-4" />
-              <span>支持批量上传</span>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <DocumentIcon className="h-4 w-4" />
+            <span>自动串行处理</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 文件列表 */}
       {files.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <section className="overflow-hidden rounded-3xl border border-[var(--line)] bg-white/85">
+          <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">
-                已选择 {files.length} 个视频
-              </h3>
-              <p className="text-xs text-gray-600 mt-0.5">
+              <h3 className="text-sm font-semibold text-[var(--ink)]">已选 {files.length} 个视频</h3>
+              <p className="text-xs text-[var(--muted)]">
                 总大小 {formatFileSize(files.reduce((sum, f) => sum + f.size, 0))}
               </p>
             </div>
             <button
               onClick={handleStartProcessing}
               disabled={isProcessing}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <PlayIcon className="w-4 h-4" />
+              <PlayIcon className="h-4 w-4" />
               {isProcessing ? '处理中...' : '开始处理'}
             </button>
           </div>
 
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-[var(--line)]/70">
             {files.map((file, index) => (
-              <div key={index} className="px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors group">
-                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-sm">
+              <div key={index} className="flex items-center gap-3 px-5 py-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--panel-2)] text-xs font-bold text-[var(--ink-soft)]">
                   {index + 1}
                 </div>
-                
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate text-sm">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {formatFileSize(file.size)}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[var(--ink)]">{file.name}</p>
+                  <p className="text-xs text-[var(--muted)]">{formatFileSize(file.size)}</p>
                 </div>
-
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     removeFile(index);
                   }}
                   disabled={isProcessing}
-                  className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+                  className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-[rgba(239,68,68,0.1)] hover:text-red-600 disabled:opacity-40"
                   title="移除"
                 >
-                  <XMarkIcon className="w-5 h-5 text-red-600" />
+                  <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* 处理进度 */}
       {tasks.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">处理进度</h3>
-            <p className="text-xs text-gray-600 mt-0.5">
-              AI 正在分析视频内容并生成精彩片段
-            </p>
+        <section className="rounded-3xl border border-[var(--line)] bg-white/85 p-4 md:p-5">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-[var(--ink)]">实时任务进度</h3>
+            <p className="text-xs text-[var(--muted)]">失败步骤会直接标红，方便定位阻断项</p>
           </div>
-          
-          <div className="p-6 space-y-6">
+          <div className="space-y-4">
             {tasks.map((task) => (
-              <div key={task.id} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900 text-sm">
-                    {task.videoPath?.split('/').pop() || '处理中'}
-                  </h4>
-                  <span className="text-sm text-gray-600">{task.progress}%</span>
+              <div key={task.id} className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="truncate text-sm font-medium text-[var(--ink)]">{task.videoPath?.split('/').pop() || '处理中任务'}</p>
+                  <p className="text-xs font-semibold text-[var(--muted)]">{task.progress}%</p>
                 </div>
-                
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="mb-3 h-2 rounded-full bg-[var(--panel-2)]">
                   <div
-                    className="bg-orange-600 h-2 rounded-full transition-all duration-300"
+                    className="h-2 rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent-2))]"
                     style={{ width: `${task.progress}%` }}
                   />
                 </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  {Object.entries(task.steps).map(([stepName, step]) => {
-                    const status = getStepStatus(step.status);
-                    return (
-                      <div key={stepName} className="flex items-center gap-2 text-xs">
-                        <div className={`w-2 h-2 rounded-full ${
-                          step.status === 'completed' ? 'bg-green-500' :
-                          step.status === 'processing' ? 'bg-blue-500 animate-pulse' :
-                          step.status === 'failed' ? 'bg-red-500' :
-                          'bg-gray-300'
-                        }`} />
-                        <span className="text-gray-700">{getStepLabel(stepName)}</span>
-                        <span className={status.color}>{status.text}</span>
-                      </div>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3">
+                  {Object.entries(task.steps).map(([stepName, step]) => (
+                    <div key={stepName} className="rounded-lg border border-[var(--line)]/80 bg-white/75 px-2 py-1.5">
+                      <p className="font-medium text-[var(--ink-soft)]">{getStepLabel(stepName)}</p>
+                      <p
+                        className={`mt-0.5 ${
+                          step.status === 'completed'
+                            ? 'text-emerald-600'
+                            : step.status === 'processing'
+                              ? 'text-sky-600'
+                              : step.status === 'failed'
+                                ? 'text-red-600'
+                                : 'text-[var(--muted)]'
+                        }`}
+                      >
+                        {step.status}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

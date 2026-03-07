@@ -27,6 +27,8 @@
   "author": "Auto Editing Team",
   "license": "MIT",
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@google/generative-ai": "^0.1.3",
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^2.1.1",
@@ -76,6 +78,10 @@
     "directories": {
       "output": "release"
     },
+    "asarUnpack": [
+      "**/node_modules/@ffmpeg-installer/**",
+      "**/node_modules/@ffprobe-installer/**"
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",

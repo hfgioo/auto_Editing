@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   ChartBarIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -14,16 +14,15 @@ const ProcessPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadTasks();
-    
-    // 监听实时进度更新
+    void loadTasks();
+
     api.onVideoProgress((task: ProcessTask) => {
-      setTasks(prev => {
-        const index = prev.findIndex(t => t.id === task.id);
+      setTasks((prev) => {
+        const index = prev.findIndex((t) => t.id === task.id);
         if (index >= 0) {
-          const newTasks = [...prev];
-          newTasks[index] = task;
-          return newTasks;
+          const next = [...prev];
+          next[index] = task;
+          return next;
         }
         return [...prev, task];
       });
@@ -60,74 +59,57 @@ const ProcessPage: React.FC = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon className="w-5 h-5 text-green-600" />;
+        return <CheckCircleIcon className="h-5 w-5 text-emerald-600" />;
       case 'processing':
-        return <ArrowPathIcon className="w-5 h-5 text-blue-600 animate-spin" />;
+        return <ArrowPathIcon className="h-5 w-5 animate-spin text-sky-600" />;
       case 'failed':
-        return <XCircleIcon className="w-5 h-5 text-red-600" />;
+        return <XCircleIcon className="h-5 w-5 text-red-600" />;
       default:
-        return <ClockIcon className="w-5 h-5 text-gray-400" />;
+        return <ClockIcon className="h-5 w-5 text-[var(--muted)]" />;
     }
-  };
-
-  const getStatusText = (status: string) => {
-    const statusMap: Record<string, string> = {
-      pending: '等待中',
-      processing: '处理中',
-      completed: '已完成',
-      failed: '失败',
-      skipped: '已跳过',
-    };
-    return statusMap[status] || status;
   };
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-center h-96">
-          <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
-        </div>
+      <div className="flex h-72 items-center justify-center">
+        <ArrowPathIcon className="h-7 w-7 animate-spin text-[var(--muted)]" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex justify-end">
         <button
           onClick={loadTasks}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-white/80 px-4 py-2 text-sm font-medium text-[var(--ink-soft)] transition hover:bg-white"
         >
-          <ArrowPathIcon className="w-4 h-4" />
+          <ArrowPathIcon className="h-4 w-4" />
           刷新
         </button>
       </div>
 
-      {/* 任务列表 */}
       {tasks.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
-          <ChartBarIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-          <p className="text-gray-600 mb-2">暂无处理任务</p>
-          <p className="text-sm text-gray-500">上传视频后将在这里显示处理进度</p>
+        <div className="rounded-3xl border border-[var(--line)] bg-white/80 p-16 text-center">
+          <ChartBarIcon className="mx-auto mb-4 h-14 w-14 text-[var(--muted)]" />
+          <p className="text-sm font-medium text-[var(--ink-soft)]">暂无任务</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">上传页开始处理后会在这里显示</p>
         </div>
       ) : (
         <div className="space-y-4">
           {tasks.map((task) => (
-            <div key={task.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* 任务头部 */}
-              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <div key={task.id} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-white/85">
+              <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
                 <div className="flex items-center gap-3">
                   {getStatusIcon(task.status)}
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <p className="max-w-[44vw] truncate text-sm font-semibold text-[var(--ink)] md:max-w-[60vw]">
                       {task.videoPath?.split('/').pop() || '未知视频'}
-                    </h3>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      状态: {getStatusText(task.status)} · 进度: {task.progress}%
                     </p>
+                    <p className="text-xs text-[var(--muted)]">状态: {task.status} · 进度: {task.progress}%</p>
                   </div>
                 </div>
-                
+
                 {task.status === 'completed' && task.result?.outputPath && (
                   <button
                     onClick={async () => {
@@ -136,62 +118,53 @@ const ProcessPage: React.FC = () => {
                         alert(`打开失败: ${result?.error || '未知错误'}`);
                       }
                     }}
-                    className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+                    className="rounded-lg bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-soft)] transition hover:bg-[var(--line)]"
                   >
-                    查看文件
+                    打开文件
                   </button>
                 )}
               </div>
 
-              {/* 进度条 */}
-              <div className="px-6 py-3 border-b border-gray-200">
-                <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="px-5 py-3">
+                <div className="h-2 rounded-full bg-[var(--panel-2)]">
                   <div
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      task.status === 'completed' ? 'bg-green-600' :
-                      task.status === 'failed' ? 'bg-red-600' :
-                      'bg-orange-600'
+                    className={`h-2 rounded-full ${
+                      task.status === 'completed'
+                        ? 'bg-emerald-500'
+                        : task.status === 'failed'
+                          ? 'bg-red-500'
+                          : 'bg-[linear-gradient(90deg,var(--accent),var(--accent-2))]'
                     }`}
                     style={{ width: `${task.progress}%` }}
                   />
                 </div>
               </div>
 
-              {/* 步骤详情 */}
-              <div className="px-6 py-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {Object.entries(task.steps).map(([stepName, step]) => (
-                    <div key={stepName} className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">
-                        {step.status === 'completed' ? (
-                          <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                        ) : step.status === 'processing' ? (
-                          <ArrowPathIcon className="w-5 h-5 text-blue-600 animate-spin" />
-                        ) : step.status === 'failed' ? (
-                          <XCircleIcon className="w-5 h-5 text-red-600" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {getStepLabel(stepName)}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {getStatusText(step.status)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid grid-cols-2 gap-2 px-5 pb-5 md:grid-cols-3">
+                {Object.entries(task.steps).map(([stepName, step]) => (
+                  <div key={stepName} className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-2.5">
+                    <p className="text-xs font-medium text-[var(--ink-soft)]">{getStepLabel(stepName)}</p>
+                    <p
+                      className={`mt-1 text-xs ${
+                        step.status === 'completed'
+                          ? 'text-emerald-600'
+                          : step.status === 'processing'
+                            ? 'text-sky-600'
+                            : step.status === 'failed'
+                              ? 'text-red-600'
+                              : 'text-[var(--muted)]'
+                      }`}
+                    >
+                      {step.status}
+                    </p>
+                  </div>
+                ))}
               </div>
 
-              {/* 错误信息 */}
               {task.error && (
-                <div className="px-6 py-3 bg-red-50 border-t border-red-200">
-                  <p className="text-sm text-red-800">
-                    <span className="font-medium">错误:</span> {task.error}
-                  </p>
+                <div className="border-t border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700">
+                  <span className="font-semibold">错误：</span>
+                  {task.error}
                 </div>
               )}
             </div>

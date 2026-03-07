@@ -6,6 +6,7 @@ import {
   MusicalNoteIcon,
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
+import { SparklesIcon } from '@heroicons/react/24/solid';
 import UploadPage from './pages/UploadPage';
 import ProcessPage from './pages/ProcessPage';
 import SubtitlePage from './pages/SubtitlePage';
@@ -22,55 +23,111 @@ function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('upload');
 
   const navItems = [
-    { id: 'upload' as PageType, label: '上传视频', icon: CloudArrowUpIcon },
-    { id: 'process' as PageType, label: '处理进度', icon: ChartBarIcon },
-    { id: 'subtitle' as PageType, label: '字幕管理', icon: DocumentTextIcon },
-    { id: 'music' as PageType, label: '音乐库', icon: MusicalNoteIcon },
-    { id: 'settings' as PageType, label: '设置', icon: Cog6ToothIcon },
+    { id: 'upload' as PageType, label: '上传视频', desc: '拖拽素材并启动流程', icon: CloudArrowUpIcon },
+    { id: 'process' as PageType, label: '处理进度', desc: '查看每一步状态', icon: ChartBarIcon },
+    { id: 'subtitle' as PageType, label: '字幕管理', desc: '编辑和导出字幕', icon: DocumentTextIcon },
+    { id: 'music' as PageType, label: '音乐库', desc: '管理 BGM 资源', icon: MusicalNoteIcon },
+    { id: 'settings' as PageType, label: '设置', desc: 'AI 与导出参数', icon: Cog6ToothIcon },
   ];
 
+  const activeItem = navItems.find((item) => item.id === currentPage);
+
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      <aside className="w-20 md:w-24 border-r border-slate-800 bg-slate-900/95 backdrop-blur flex flex-col items-center py-6">
-        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg shadow-orange-900/40">
-          <CloudArrowUpIcon className="w-6 h-6 text-white" />
-        </div>
+    <div className="relative h-screen overflow-hidden bg-[var(--app-bg)] text-[var(--ink)]">
+      <div className="pointer-events-none absolute -left-40 -top-48 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(225,107,66,0.24),transparent_70%)]" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(41,120,181,0.2),transparent_70%)]" />
 
-        <nav className="mt-8 flex-1 w-full px-2 space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentPage === item.id;
-            
-            return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentPage(item.id)}
-                className={`
-                  w-full flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all text-xs
-                  ${isActive
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }
-                `}
-                title={item.label}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="hidden md:block">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+      <div className="relative flex h-full">
+        <aside className="hidden w-80 shrink-0 border-r border-[var(--line)] bg-[var(--panel)]/85 backdrop-blur md:flex md:flex-col">
+          <div className="px-8 pb-6 pt-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent-2))] text-white shadow-lg shadow-[rgba(28,32,36,0.18)]">
+                <SparklesIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Auto Editing</p>
+                <h1 className="text-xl font-semibold">Clip Studio</h1>
+              </div>
+            </div>
+          </div>
 
-      <main className={`flex-1 overflow-auto ${!isElectron() ? 'pt-6' : ''}`}>
-        <div className="min-h-full p-4 md:p-8 bg-[radial-gradient(circle_at_10%_20%,rgba(251,146,60,0.12),transparent_35%),radial-gradient(circle_at_90%_80%,rgba(244,63,94,0.1),transparent_35%)]">
-          {currentPage === 'upload' && <UploadPage />}
-          {currentPage === 'process' && <ProcessPage />}
-          {currentPage === 'subtitle' && <SubtitlePage />}
-          {currentPage === 'music' && <MusicPage />}
-          {currentPage === 'settings' && <SettingsPage />}
-        </div>
-      </main>
+          <nav className="space-y-2 px-4">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentPage(item.id)}
+                  className={`
+                    group w-full rounded-2xl border px-4 py-3 text-left transition-all
+                    ${isActive
+                      ? 'border-[rgba(225,107,66,0.32)] bg-[rgba(225,107,66,0.12)] shadow-[0_12px_24px_rgba(225,107,66,0.14)]'
+                      : 'border-transparent hover:border-[var(--line)] hover:bg-white/70'
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${isActive ? 'bg-white/85 text-[var(--accent)]' : 'bg-[var(--panel-2)] text-[var(--muted)] group-hover:text-[var(--ink)]'}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${isActive ? 'text-[var(--ink)]' : 'text-[var(--ink-soft)]'}`}>{item.label}</p>
+                      <p className="text-xs text-[var(--muted)]">{item.desc}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <main className={`flex-1 overflow-auto ${!isElectron() ? 'pt-3 md:pt-5' : ''}`}>
+          <div className="mx-auto w-full max-w-[1300px] p-3 md:p-8">
+            <header className="mb-4 rounded-3xl border border-[var(--line)] bg-[var(--panel)]/90 px-5 py-4 shadow-[0_8px_36px_rgba(15,23,42,0.06)] backdrop-blur md:mb-6 md:px-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--muted)]">Workspace</p>
+                  <h2 className="text-xl font-semibold md:text-2xl">{activeItem?.label}</h2>
+                </div>
+                <div className="rounded-xl border border-[var(--line)] bg-white/70 px-3 py-1.5 text-xs text-[var(--muted)]">
+                  {isElectron() ? 'Desktop Mode' : 'Browser Fallback'}
+                </div>
+              </div>
+
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1 md:hidden">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentPage === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setCurrentPage(item.id)}
+                      className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs whitespace-nowrap ${
+                        isActive
+                          ? 'border-[rgba(225,107,66,0.42)] bg-[rgba(225,107,66,0.14)] text-[var(--ink)]'
+                          : 'border-[var(--line)] bg-white/65 text-[var(--ink-soft)]'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </header>
+
+            <div className="animate-fadeUp rounded-3xl border border-[var(--line)] bg-[var(--panel)]/92 p-3 shadow-[0_18px_46px_rgba(17,24,39,0.07)] backdrop-blur md:p-6">
+              {currentPage === 'upload' && <UploadPage />}
+              {currentPage === 'process' && <ProcessPage />}
+              {currentPage === 'subtitle' && <SubtitlePage />}
+              {currentPage === 'music' && <MusicPage />}
+              {currentPage === 'settings' && <SettingsPage />}
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
